@@ -16,7 +16,7 @@ venv/
 .vscode/
 
 # Environment variables and sensitive data
-
+.env
 *.json
 
 fortinet-gsc-api-*.json
