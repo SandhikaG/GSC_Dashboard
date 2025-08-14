@@ -1,0 +1,14 @@
+[project]
+name = "gsc-api-data"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.116.1",
+    "google-auth-oauthlib>=1.2.2",
+    "pandas>=2.3.1",
+    "python-dotenv>=1.1.1",
+    "requests>=2.32.4",
+    "uvicorn>=0.35.0",
+]
