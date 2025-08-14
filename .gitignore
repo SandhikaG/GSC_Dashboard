@@ -1,11 +1,20 @@
 # Python-generated files
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
 build/
 dist/
 wheels/
 *.egg-info
 
 # Virtual environments
-.venv
-fortinet-gsc-api-c8ebcebdce98.json
+.venv/
+venv/
+
+# IDE and editor folders
+.idea/
+.vscode/
+
+# Environment variables and sensitive data
+.env
+*.json
