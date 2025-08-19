@@ -64,10 +64,11 @@ jobs:
         DATABASE_URL: ${{ secrets.DATABASE_URL }}
       run: |
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          python gsc_fetcher.py --mode ${{ github.event.inputs.mode }} --months ${{ github.event.inputs.months }} --days ${{ github.event.inputs.days }}
+          python main.py --mode ${{ github.event.inputs.mode }} --months ${{ github.event.inputs.months }} --days ${{ github.event.inputs.days }}
         else
-          python gsc_fetcher.py --mode daily
+          python main.py --mode daily
         fi
+
     
     - name: Clean up service account file
       if: always()
