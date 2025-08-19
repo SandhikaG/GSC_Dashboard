@@ -9,6 +9,9 @@ import json
 import time
 import argparse
 from typing import Optional, Dict, List
+import socket
+import urllib.parse
+from psycopg2.extras import RealDictCursor
 
 # Load .env file
 load_dotenv()
@@ -77,10 +80,64 @@ class GSCDataFetcher:
             print(f"Unexpected error: {e}")
             return None
     
+    def get_db_connection(self, retries=3, timeout=30):
+        """Get database connection with retry logic and IPv4 preference"""
+        database_url = DATABASE_URL
+        
+        # Parse the URL to modify connection parameters
+        parsed = urllib.parse.urlparse(database_url)
+        
+        # Build connection parameters
+        conn_params = {
+            'host': parsed.hostname,
+            'port': parsed.port or 5432,
+            'database': parsed.path.lstrip('/'),
+            'user': parsed.username,
+            'password': parsed.password,
+            'connect_timeout': timeout,
+            'application_name': 'gsc_fetcher_github_actions'
+        }
+        
+        # Add SSL requirement for Supabase
+        if 'supabase.co' in parsed.hostname:
+            conn_params['sslmode'] = 'require'
+        
+        for attempt in range(retries):
+            try:
+                print(f"Connection attempt {attempt + 1}/{retries} to {conn_params['host']}:{conn_params['port']}")
+                
+                # Try to resolve hostname to IPv4 first
+                try:
+                    # Force IPv4 resolution
+                    ip_address = socket.getaddrinfo(
+                        conn_params['host'], 
+                        conn_params['port'], 
+                        socket.AF_INET,  # Force IPv4
+                        socket.SOCK_STREAM
+                    )[0][4][0]
+                    print(f"Resolved {conn_params['host']} to IPv4: {ip_address}")
+                    conn_params['host'] = ip_address
+                except Exception as e:
+                    print(f"IPv4 resolution failed, using hostname: {e}")
+                
+                conn = psycopg2.connect(**conn_params)
+                print("✓ Database connection successful")
+                return conn
+                
+            except Exception as e:
+                print(f"Connection attempt {attempt + 1} failed: {e}")
+                if attempt < retries - 1:
+                    wait_time = (attempt + 1) * 5  # Progressive backoff
+                    print(f"Waiting {wait_time} seconds before retry...")
+                    time.sleep(wait_time)
+                else:
+                    print("All connection attempts failed")
+                    raise
+    
     def create_table_if_not_exists(self):
         """Create the GSC metrics table if it doesn't exist"""
         try:
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = self.get_db_connection()
             cur = conn.cursor()
             
             cur.execute("""
@@ -107,10 +164,43 @@ class GSCDataFetcher:
             print(f"Database table creation error: {e}")
             raise
     
+    def test_db_connection(self):
+        """Test database connection with detailed diagnostics"""
+        try:
+            print("=== Database Connection Test ===")
+            print(f"DATABASE_URL format check...")
+            
+            parsed = urllib.parse.urlparse(DATABASE_URL)
+            print(f"Host: {parsed.hostname}")
+            print(f"Port: {parsed.port}")
+            print(f"Database: {parsed.path.lstrip('/')}")
+            print(f"User: {parsed.username}")
+            
+            conn = self.get_db_connection()
+            cur = conn.cursor()
+            
+            # Test basic query
+            cur.execute("SELECT version();")
+            version = cur.fetchone()[0]
+            print(f"✓ Connected to: {version}")
+            
+            # Test table access
+            cur.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'gsc_metrics';")
+            table_exists = cur.fetchone()[0] > 0
+            print(f"✓ GSC metrics table exists: {table_exists}")
+            
+            cur.close()
+            conn.close()
+            return True
+            
+        except Exception as e:
+            print(f"✗ Database connection failed: {e}")
+            return False
+    
     def get_existing_dates(self) -> List[str]:
         """Get list of dates that already exist in database"""
         try:
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = self.get_db_connection()
             cur = conn.cursor()
             
             cur.execute("SELECT date FROM gsc_metrics ORDER BY date")
@@ -128,7 +218,7 @@ class GSCDataFetcher:
     def insert_batch_data(self, data_rows: List[Dict], skip_existing: bool = True):
         """Insert multiple rows of data into database"""
         try:
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = self.get_db_connection()
             cur = conn.cursor()
             
             existing_dates = set(self.get_existing_dates()) if skip_existing else set()
@@ -226,7 +316,7 @@ class GSCDataFetcher:
     def get_data_summary(self):
         """Get summary of data in database"""
         try:
-            conn = psycopg2.connect(DATABASE_URL)
+            conn = self.get_db_connection()
             cur = conn.cursor()
             
             cur.execute("""
@@ -257,12 +347,12 @@ class GSCDataFetcher:
 
 def main():
     parser = argparse.ArgumentParser(description='GSC Data Fetcher')
-    parser.add_argument('--mode', choices=['historical', 'daily', 'test', 'summary'], 
-                    default='daily', help='Operation mode')
+    parser.add_argument('--mode', choices=['historical', 'daily', 'test', 'summary', 'test-db'], 
+                       default='daily', help='Operation mode')
     parser.add_argument('--months', type=int, default=16, 
-                    help='Number of months for historical fetch')
+                       help='Number of months for historical fetch')
     parser.add_argument('--days', type=int, default=7, 
-                    help='Number of days for daily fetch')
+                       help='Number of days for daily fetch')
     
     args = parser.parse_args()
     
@@ -270,14 +360,22 @@ def main():
         fetcher = GSCDataFetcher()
         
         if args.mode == 'test':
+            print("=== Testing GSC Connection ===")
             fetcher.test_gsc_connection()
+            print("\n=== Testing Database Connection ===")
+            fetcher.test_db_connection()
+            
+        elif args.mode == 'test-db':
+            fetcher.test_db_connection()
             
         elif args.mode == 'historical':
+            fetcher.test_db_connection()
             fetcher.create_table_if_not_exists()
             fetcher.fetch_historical_data(args.months)
             fetcher.get_data_summary()
             
         elif args.mode == 'daily':
+            fetcher.test_db_connection()
             fetcher.create_table_if_not_exists()
             fetcher.fetch_recent_data(args.days)
             fetcher.get_data_summary()
@@ -287,6 +385,8 @@ def main():
     
     except Exception as e:
         print(f"Script failed: {e}")
+        import traceback
+        traceback.print_exc()
         exit(1)
 
 if __name__ == "__main__":

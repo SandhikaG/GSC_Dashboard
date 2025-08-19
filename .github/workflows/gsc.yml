@@ -68,7 +68,6 @@ jobs:
         else
           python main.py --mode daily
         fi
-
     
     - name: Clean up service account file
       if: always()
