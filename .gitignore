@@ -20,3 +20,4 @@ venv/
 *.json
 
 fortinet-gsc-api-*.json
+credentials.json

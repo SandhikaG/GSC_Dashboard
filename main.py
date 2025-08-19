@@ -1,17 +1,293 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import os
+import psycopg2
+from datetime import date, timedelta
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from dotenv import load_dotenv
+import json
+import time
+import argparse
+from typing import Optional, Dict, List
 
+# Load .env file
 load_dotenv()
 
-app=FastAPI()
+SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
+SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
+SITE_URL = os.getenv("SITE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
-)
+class GSCDataFetcher:
+    def __init__(self):
+        self.service = None
+        self.connect_to_gsc()
+    
+    def connect_to_gsc(self):
+        """Initialize GSC connection"""
+        try:
+            creds = service_account.Credentials.from_service_account_file(
+                SERVICE_ACCOUNT_FILE, scopes=SCOPES
+            )
+            self.service = build('searchconsole', 'v1', credentials=creds, cache_discovery=False)
+            print("✓ Connected to Google Search Console")
+        except Exception as e:
+            print(f"✗ Error connecting to GSC: {e}")
+            raise
+    
+    def test_gsc_connection(self):
+        """Test if we can connect to GSC and list sites"""
+        try:
+            sites = self.service.sites().list().execute()
+            print("Sites accessible by service account:")
+            for site in sites.get('siteEntry', []):
+                print(f"  - {site['siteUrl']} (Permission: {site['permissionLevel']})")
+            return True
+        except Exception as e:
+            print(f"Error testing GSC connection: {e}")
+            return False
+    
+    def fetch_gsc_data(self, start_date: str, end_date: str) -> Optional[Dict]:
+        """Fetch GSC data for a specific date range"""
+        try:
+            request = {
+                "startDate": start_date,
+                "endDate": end_date,
+                "dimensions": ["date"],
+                "rowLimit": 25000  # Max limit for GSC API
+            }
+            
+            print(f"Fetching data for {start_date} to {end_date}")
+            response = self.service.searchanalytics().query(siteUrl=SITE_URL, body=request).execute()
+            
+            if "rows" in response and len(response["rows"]) > 0:
+                return response["rows"]
+            else:
+                print(f"No data found for {start_date} to {end_date}")
+                return None
+                
+        except HttpError as e:
+            print(f"HTTP Error: {e}")
+            if e.resp.status == 403:
+                print("Permission denied. Make sure the service account is added to GSC with proper permissions.")
+            elif e.resp.status == 400:
+                print("Bad request. Check site URL format and date range.")
+            return None
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return None
+    
+    def create_table_if_not_exists(self):
+        """Create the GSC metrics table if it doesn't exist"""
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+            
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS gsc_metrics (
+                    date DATE PRIMARY KEY,
+                    clicks INTEGER DEFAULT 0,
+                    impressions INTEGER DEFAULT 0,
+                    ctr DECIMAL(10, 6) DEFAULT 0,
+                    position DECIMAL(10, 2) DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                
+                -- Create index for faster queries
+                CREATE INDEX IF NOT EXISTS idx_gsc_metrics_date ON gsc_metrics(date);
+            """)
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            print("✓ Database table ready")
+            
+        except Exception as e:
+            print(f"Database table creation error: {e}")
+            raise
+    
+    def get_existing_dates(self) -> List[str]:
+        """Get list of dates that already exist in database"""
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+            
+            cur.execute("SELECT date FROM gsc_metrics ORDER BY date")
+            existing_dates = [row[0].isoformat() for row in cur.fetchall()]
+            
+            cur.close()
+            conn.close()
+            
+            return existing_dates
+            
+        except Exception as e:
+            print(f"Error fetching existing dates: {e}")
+            return []
+    
+    def insert_batch_data(self, data_rows: List[Dict], skip_existing: bool = True):
+        """Insert multiple rows of data into database"""
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+            
+            existing_dates = set(self.get_existing_dates()) if skip_existing else set()
+            inserted_count = 0
+            skipped_count = 0
+            
+            for row in data_rows:
+                row_date = row['keys'][0]  # Date is the first dimension
+                
+                if skip_existing and row_date in existing_dates:
+                    skipped_count += 1
+                    continue
+                
+                cur.execute("""
+                    INSERT INTO gsc_metrics (date, clicks, impressions, ctr, position, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (date) DO UPDATE SET
+                        clicks = EXCLUDED.clicks,
+                        impressions = EXCLUDED.impressions,
+                        ctr = EXCLUDED.ctr,
+                        position = EXCLUDED.position,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (
+                    row_date,
+                    row.get('clicks', 0),
+                    row.get('impressions', 0),
+                    row.get('ctr', 0.0),
+                    row.get('position', 0.0)
+                ))
+                inserted_count += 1
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            print(f"✓ Inserted {inserted_count} new records, skipped {skipped_count} existing")
+            
+        except Exception as e:
+            print(f"Database insertion error: {e}")
+            raise
+    
+    def fetch_historical_data(self, months_back: int = 16):
+        """Fetch historical data for the specified number of months"""
+        print(f"\n=== Fetching {months_back} months of historical data ===")
+        
+        # Calculate date range (GSC data has ~3 day delay)
+        end_date = date.today() - timedelta(days=3)
+        start_date = end_date - timedelta(days=30 * months_back)
+        
+        print(f"Date range: {start_date} to {end_date}")
+        
+        # Fetch data in chunks to avoid API limits
+        chunk_size = 30  # days
+        current_date = start_date
+        all_data = []
+        
+        while current_date <= end_date:
+            chunk_end = min(current_date + timedelta(days=chunk_size - 1), end_date)
+            
+            print(f"Fetching chunk: {current_date} to {chunk_end}")
+            chunk_data = self.fetch_gsc_data(current_date.isoformat(), chunk_end.isoformat())
+            
+            if chunk_data:
+                all_data.extend(chunk_data)
+                print(f"  ✓ Got {len(chunk_data)} records")
+            else:
+                print(f"  - No data for this chunk")
+            
+            current_date = chunk_end + timedelta(days=1)
+            time.sleep(1)  # Be nice to the API
+        
+        if all_data:
+            print(f"\nTotal records fetched: {len(all_data)}")
+            self.insert_batch_data(all_data, skip_existing=True)
+        else:
+            print("No historical data found")
+    
+    def fetch_recent_data(self, days_back: int = 7):
+        """Fetch recent data (for daily updates)"""
+        print(f"\n=== Fetching last {days_back} days of data ===")
+        
+        end_date = date.today() - timedelta(days=3)  # GSC has ~3 day delay
+        start_date = end_date - timedelta(days=days_back - 1)
+        
+        print(f"Date range: {start_date} to {end_date}")
+        
+        data = self.fetch_gsc_data(start_date.isoformat(), end_date.isoformat())
+        
+        if data:
+            print(f"Found {len(data)} records")
+            self.insert_batch_data(data, skip_existing=False)  # Update existing records
+        else:
+            print("No recent data found")
+    
+    def get_data_summary(self):
+        """Get summary of data in database"""
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+            
+            cur.execute("""
+                SELECT 
+                    COUNT(*) as total_records,
+                    MIN(date) as earliest_date,
+                    MAX(date) as latest_date,
+                    SUM(clicks) as total_clicks,
+                    SUM(impressions) as total_impressions
+                FROM gsc_metrics
+            """)
+            
+            result = cur.fetchone()
+            cur.close()
+            conn.close()
+            
+            if result and result[0] > 0:
+                print(f"\n=== Database Summary ===")
+                print(f"Total records: {result[0]}")
+                print(f"Date range: {result[1]} to {result[2]}")
+                print(f"Total clicks: {result[3]:,}")
+                print(f"Total impressions: {result[4]:,}")
+            else:
+                print("No data in database")
+                
+        except Exception as e:
+            print(f"Error getting summary: {e}")
 
+def main():
+    parser = argparse.ArgumentParser(description='GSC Data Fetcher')
+    parser.add_argument('--mode', choices=['historical', 'daily', 'test', 'summary'], 
+                    default='daily', help='Operation mode')
+    parser.add_argument('--months', type=int, default=16, 
+                    help='Number of months for historical fetch')
+    parser.add_argument('--days', type=int, default=7, 
+                    help='Number of days for daily fetch')
+    
+    args = parser.parse_args()
+    
+    try:
+        fetcher = GSCDataFetcher()
+        
+        if args.mode == 'test':
+            fetcher.test_gsc_connection()
+            
+        elif args.mode == 'historical':
+            fetcher.create_table_if_not_exists()
+            fetcher.fetch_historical_data(args.months)
+            fetcher.get_data_summary()
+            
+        elif args.mode == 'daily':
+            fetcher.create_table_if_not_exists()
+            fetcher.fetch_recent_data(args.days)
+            fetcher.get_data_summary()
+            
+        elif args.mode == 'summary':
+            fetcher.get_data_summary()
+    
+    except Exception as e:
+        print(f"Script failed: {e}")
+        exit(1)
 
+if __name__ == "__main__":
+    main()

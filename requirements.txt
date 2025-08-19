@@ -1,6 +1,13 @@
-google-api-python-client
-google-auth
-google-auth-httplib2
-pandas
-SQLAlchemy>=2
-psycopg2-binary
+# Google APIs
+google-auth==2.25.2
+google-auth-oauthlib==1.2.0
+google-api-python-client==2.110.0
+
+# Database
+psycopg2-binary==2.9.10
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Utilities
+requests==2.31.0
