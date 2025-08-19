@@ -12,6 +12,7 @@ from typing import Optional, Dict, List
 import socket
 import urllib.parse
 from psycopg2.extras import RealDictCursor
+import requests
 
 # Load .env file
 load_dotenv()
@@ -21,9 +22,15 @@ SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
 SITE_URL = os.getenv("SITE_URL")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# Supabase REST API settings
+SUPABASE_URL = os.getenv("SUPABASE_URL")  # https://your-project.supabase.co
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+USE_REST_API = os.getenv("USE_REST_API", "false").lower() == "true"
+
 class GSCDataFetcher:
     def __init__(self):
         self.service = None
+        self.use_rest_api = USE_REST_API
         self.connect_to_gsc()
     
     def connect_to_gsc(self):
@@ -82,6 +89,9 @@ class GSCDataFetcher:
     
     def get_db_connection(self, retries=3, timeout=30):
         """Get database connection with retry logic and IPv4 preference"""
+        if self.use_rest_api:
+            return None  # Skip PostgreSQL connection
+            
         database_url = DATABASE_URL
         
         # Parse the URL to modify connection parameters
@@ -132,12 +142,24 @@ class GSCDataFetcher:
                     time.sleep(wait_time)
                 else:
                     print("All connection attempts failed")
+                    # Auto-switch to REST API if PostgreSQL fails
+                    if not self.use_rest_api:
+                        print("🔄 Switching to REST API mode due to connection issues")
+                        self.use_rest_api = True
+                        return None
                     raise
     
     def create_table_if_not_exists(self):
         """Create the GSC metrics table if it doesn't exist"""
+        if self.use_rest_api:
+            print("✓ Using REST API mode - table creation handled by Supabase")
+            return
+            
         try:
             conn = self.get_db_connection()
+            if conn is None:
+                return  # REST API mode activated
+                
             cur = conn.cursor()
             
             cur.execute("""
@@ -166,6 +188,9 @@ class GSCDataFetcher:
     
     def test_db_connection(self):
         """Test database connection with detailed diagnostics"""
+        if self.use_rest_api:
+            return self.test_rest_api_connection()
+            
         try:
             print("=== Database Connection Test ===")
             print(f"DATABASE_URL format check...")
@@ -177,6 +202,9 @@ class GSCDataFetcher:
             print(f"User: {parsed.username}")
             
             conn = self.get_db_connection()
+            if conn is None:
+                return self.test_rest_api_connection()  # Switched to REST API
+                
             cur = conn.cursor()
             
             # Test basic query
@@ -195,12 +223,56 @@ class GSCDataFetcher:
             
         except Exception as e:
             print(f"✗ Database connection failed: {e}")
+            print("🔄 Trying REST API connection...")
+            self.use_rest_api = True
+            return self.test_rest_api_connection()
+    
+    def test_rest_api_connection(self):
+        """Test Supabase REST API connection"""
+        try:
+            print("=== Testing Supabase REST API Connection ===")
+            
+            if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+                print("✗ Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables")
+                print("Please add these to your GitHub secrets:")
+                print("SUPABASE_URL: https://your-project.supabase.co")
+                print("SUPABASE_ANON_KEY: your-anon-key-from-supabase-dashboard")
+                return False
+            
+            headers = {
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            # Test connection with a simple query
+            response = requests.get(
+                f"{SUPABASE_URL}/rest/v1/gsc_metrics?select=count&limit=1",
+                headers=headers,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                print("✓ REST API connection successful")
+                return True
+            else:
+                print(f"✗ REST API connection failed: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            print(f"✗ REST API connection failed: {e}")
             return False
     
     def get_existing_dates(self) -> List[str]:
         """Get list of dates that already exist in database"""
+        if self.use_rest_api:
+            return self.get_existing_dates_rest_api()
+            
         try:
             conn = self.get_db_connection()
+            if conn is None:
+                return self.get_existing_dates_rest_api()  # Switched to REST API
+                
             cur = conn.cursor()
             
             cur.execute("SELECT date FROM gsc_metrics ORDER BY date")
@@ -215,10 +287,41 @@ class GSCDataFetcher:
             print(f"Error fetching existing dates: {e}")
             return []
     
+    def get_existing_dates_rest_api(self) -> List[str]:
+        """Get existing dates via REST API"""
+        try:
+            headers = {
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+            }
+            
+            response = requests.get(
+                f"{SUPABASE_URL}/rest/v1/gsc_metrics?select=date&order=date.asc",
+                headers=headers,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                return [item['date'] for item in data]
+            else:
+                print(f"Error fetching existing dates via API: {response.status_code}")
+                return []
+                
+        except Exception as e:
+            print(f"Error fetching existing dates via API: {e}")
+            return []
+    
     def insert_batch_data(self, data_rows: List[Dict], skip_existing: bool = True):
         """Insert multiple rows of data into database"""
+        if self.use_rest_api:
+            return self.insert_batch_data_rest_api(data_rows, skip_existing)
+            
         try:
             conn = self.get_db_connection()
+            if conn is None:
+                return self.insert_batch_data_rest_api(data_rows, skip_existing)  # Switched to REST API
+                
             cur = conn.cursor()
             
             existing_dates = set(self.get_existing_dates()) if skip_existing else set()
@@ -258,6 +361,61 @@ class GSCDataFetcher:
             
         except Exception as e:
             print(f"Database insertion error: {e}")
+            raise
+    
+    def insert_batch_data_rest_api(self, data_rows: List[Dict], skip_existing: bool = True):
+        """Insert data via Supabase REST API"""
+        try:
+            headers = {
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates"  # Handle conflicts
+            }
+            
+            existing_dates = set(self.get_existing_dates()) if skip_existing else set()
+            inserted_count = 0
+            skipped_count = 0
+            
+            # Prepare data for API
+            api_data = []
+            for row in data_rows:
+                row_date = row['keys'][0]  # Date is the first dimension
+                
+                if skip_existing and row_date in existing_dates:
+                    skipped_count += 1
+                    continue
+                
+                api_data.append({
+                    "date": row_date,
+                    "clicks": row.get('clicks', 0),
+                    "impressions": row.get('impressions', 0),
+                    "ctr": row.get('ctr', 0.0),
+                    "position": row.get('position', 0.0)
+                })
+                inserted_count += 1
+            
+            if api_data:
+                # Insert in chunks to avoid payload size limits
+                chunk_size = 100
+                for i in range(0, len(api_data), chunk_size):
+                    chunk = api_data[i:i + chunk_size]
+                    
+                    response = requests.post(
+                        f"{SUPABASE_URL}/rest/v1/gsc_metrics",
+                        json=chunk,
+                        headers=headers,
+                        timeout=60
+                    )
+                    
+                    if response.status_code not in [200, 201]:
+                        print(f"API insertion error: {response.status_code} - {response.text}")
+                        raise Exception(f"API insertion failed: {response.text}")
+            
+            print(f"✓ Inserted {inserted_count} new records via API, skipped {skipped_count} existing")
+            
+        except Exception as e:
+            print(f"API insertion error: {e}")
             raise
     
     def fetch_historical_data(self, months_back: int = 16):
@@ -315,8 +473,14 @@ class GSCDataFetcher:
     
     def get_data_summary(self):
         """Get summary of data in database"""
+        if self.use_rest_api:
+            return self.get_data_summary_rest_api()
+            
         try:
             conn = self.get_db_connection()
+            if conn is None:
+                return self.get_data_summary_rest_api()  # Switched to REST API
+                
             cur = conn.cursor()
             
             cur.execute("""
@@ -344,6 +508,51 @@ class GSCDataFetcher:
                 
         except Exception as e:
             print(f"Error getting summary: {e}")
+    
+    def get_data_summary_rest_api(self):
+        """Get data summary via REST API"""
+        try:
+            headers = {
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+            }
+            
+            # Get count
+            count_response = requests.get(
+                f"{SUPABASE_URL}/rest/v1/gsc_metrics?select=count",
+                headers=headers,
+                timeout=30
+            )
+            
+            # Get aggregated data
+            agg_response = requests.get(
+                f"{SUPABASE_URL}/rest/v1/gsc_metrics?select=date,clicks,impressions&order=date.asc",
+                headers=headers,
+                timeout=30
+            )
+            
+            if count_response.status_code == 200 and agg_response.status_code == 200:
+                data = agg_response.json()
+                
+                if data:
+                    total_records = len(data)
+                    earliest_date = data[0]['date']
+                    latest_date = data[-1]['date']
+                    total_clicks = sum(item['clicks'] for item in data)
+                    total_impressions = sum(item['impressions'] for item in data)
+                    
+                    print(f"\n=== Database Summary (via REST API) ===")
+                    print(f"Total records: {total_records}")
+                    print(f"Date range: {earliest_date} to {latest_date}")
+                    print(f"Total clicks: {total_clicks:,}")
+                    print(f"Total impressions: {total_impressions:,}")
+                else:
+                    print("No data in database")
+            else:
+                print("Error getting summary via API")
+                
+        except Exception as e:
+            print(f"Error getting summary via API: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description='GSC Data Fetcher')
