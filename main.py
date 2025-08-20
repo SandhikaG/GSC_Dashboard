@@ -364,21 +364,22 @@ class GSCDataFetcher:
             raise
     
     def insert_batch_data_rest_api(self, data_rows: List[Dict], skip_existing: bool = True):
-        """Insert data via Supabase REST API"""
+        """Insert data via Supabase REST API with proper upsert handling"""
         try:
             headers = {
                 "apikey": SUPABASE_ANON_KEY,
                 "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
-                "Content-Type": "application/json",
-                "Prefer": "resolution=merge-duplicates"  # Handle conflicts
+                "Content-Type": "application/json"
             }
             
-            existing_dates = set(self.get_existing_dates()) if skip_existing else set()
             inserted_count = 0
+            updated_count = 0
             skipped_count = 0
             
-            # Prepare data for API
-            api_data = []
+            # Get existing dates if we need to skip them
+            existing_dates = set(self.get_existing_dates()) if skip_existing else set()
+            
+            # Process each record individually for better control
             for row in data_rows:
                 row_date = row['keys'][0]  # Date is the first dimension
                 
@@ -386,33 +387,68 @@ class GSCDataFetcher:
                     skipped_count += 1
                     continue
                 
-                api_data.append({
+                record_data = {
                     "date": row_date,
                     "clicks": row.get('clicks', 0),
                     "impressions": row.get('impressions', 0),
                     "ctr": row.get('ctr', 0.0),
                     "position": row.get('position', 0.0)
-                })
-                inserted_count += 1
-            
-            if api_data:
-                # Insert in chunks to avoid payload size limits
-                chunk_size = 100
-                for i in range(0, len(api_data), chunk_size):
-                    chunk = api_data[i:i + chunk_size]
+                }
+                
+                # Check if record exists
+                check_response = requests.get(
+                    f"{SUPABASE_URL}/rest/v1/gsc_metrics?date=eq.{row_date}&select=date",
+                    headers=headers,
+                    timeout=30
+                )
+                
+                if check_response.status_code == 200:
+                    existing_records = check_response.json()
                     
-                    response = requests.post(
-                        f"{SUPABASE_URL}/rest/v1/gsc_metrics",
-                        json=chunk,
-                        headers=headers,
-                        timeout=60
-                    )
-                    
-                    if response.status_code not in [200, 201]:
-                        print(f"API insertion error: {response.status_code} - {response.text}")
-                        raise Exception(f"API insertion failed: {response.text}")
+                    if existing_records:
+                        # Record exists - update it
+                        update_headers = headers.copy()
+                        update_headers["Prefer"] = "return=minimal"
+                        
+                        update_response = requests.patch(
+                            f"{SUPABASE_URL}/rest/v1/gsc_metrics?date=eq.{row_date}",
+                            json={
+                                "clicks": record_data["clicks"],
+                                "impressions": record_data["impressions"],
+                                "ctr": record_data["ctr"],
+                                "position": record_data["position"]
+                            },
+                            headers=update_headers,
+                            timeout=30
+                        )
+                        
+                        if update_response.status_code in [200, 204]:
+                            updated_count += 1
+                        else:
+                            print(f"Update failed for {row_date}: {update_response.status_code} - {update_response.text}")
+                    else:
+                        # Record doesn't exist - insert it
+                        insert_headers = headers.copy()
+                        insert_headers["Prefer"] = "return=minimal"
+                        
+                        insert_response = requests.post(
+                            f"{SUPABASE_URL}/rest/v1/gsc_metrics",
+                            json=record_data,
+                            headers=insert_headers,
+                            timeout=30
+                        )
+                        
+                        if insert_response.status_code in [200, 201]:
+                            inserted_count += 1
+                        else:
+                            print(f"Insert failed for {row_date}: {insert_response.status_code} - {insert_response.text}")
+                else:
+                    print(f"Error checking existing record for {row_date}: {check_response.status_code}")
+                
+                # Small delay to avoid overwhelming the API
+                time.sleep(0.1)
             
-            print(f"✓ Inserted {inserted_count} new records via API, skipped {skipped_count} existing")
+            print(f"✓ Inserted {inserted_count} new records, updated {updated_count} existing records, skipped {skipped_count} via API")
             
         except Exception as e:
             print(f"API insertion error: {e}")
@@ -467,7 +503,8 @@ class GSCDataFetcher:
         
         if data:
             print(f"Found {len(data)} records")
-            self.insert_batch_data(data, skip_existing=False)  # Update existing records
+            # For daily updates, we want to update existing records, so skip_existing=False
+            self.insert_batch_data(data, skip_existing=False)
         else:
             print("No recent data found")
     

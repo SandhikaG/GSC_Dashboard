@@ -64,7 +64,7 @@ jobs:
         DATABASE_URL: ${{ secrets.DATABASE_URL }}
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        USE_REST_API: "false"  # Optional: set to "true" to force REST API mode
+        USE_REST_API: "true"  # Changed to true to avoid PostgreSQL connection issues
       run: |
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           python main.py --mode ${{ github.event.inputs.mode }} --months ${{ github.event.inputs.months }} --days ${{ github.event.inputs.days }}
@@ -81,6 +81,7 @@ jobs:
       if: failure()
       uses: actions/github-script@v6
       with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}  # Added explicit token
         script: |
           github.rest.issues.create({
             owner: context.repo.owner,
