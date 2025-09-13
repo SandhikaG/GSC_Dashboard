@@ -14,7 +14,6 @@ import urllib.parse
 from psycopg2.extras import RealDictCursor
 import requests
 
-# Load .env file
 load_dotenv()
 
 SCOPES = ['https://www.googleapis.com/auth/webmasters.readonly']
@@ -23,7 +22,7 @@ SITE_URL = os.getenv("SITE_URL")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Supabase REST API settings
-SUPABASE_URL = os.getenv("SUPABASE_URL")  # https://your-project.supabase.co
+SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 USE_REST_API = os.getenv("USE_REST_API", "false").lower() == "true"
 

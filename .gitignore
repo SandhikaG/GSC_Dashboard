@@ -19,5 +19,8 @@ venv/
 .env
 *.json
 
+#files
+test_script.py
 fortinet-gsc-api-*.json
 credentials.json
+testing.ipynb
