@@ -74,6 +74,20 @@ st.markdown("""
         padding: 1rem;
         margin: 1rem 0;
     }
+    .branded-section {
+        background: linear-gradient(135deg, #e8f5e8 0%, #f0f8f0 100%);
+        border-left: 4px solid #27ae60;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 8px;
+    }
+    .non-branded-section {
+        background: linear-gradient(135deg, #fff3e0 0%, #fef7f0 100%);
+        border-left: 4px solid #f39c12;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 8px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -92,6 +106,11 @@ def load_data(uploaded_file):
     df['ctr'] = df['ctr'].astype(float)
     df['position'] = df['position'].astype(float)
     return df
+
+def is_branded_query(query, brand_terms=['forti']):
+    """Check if a query contains branded terms"""
+    query_lower = query.lower()
+    return any(term in query_lower for term in brand_terms)
 
 def create_opportunity_quadrant(df):
     df_agg = df.groupby('query').agg({
@@ -161,6 +180,46 @@ def create_opportunity_quadrant(df):
     )
     
     return fig, df_agg
+
+def create_branded_non_branded_analysis(opp_data):
+    """Create separate analysis for branded vs non-branded queries"""
+    if len(opp_data) == 0:
+        return None, None, None, None
+    
+    # Calculate medians from the filtered data
+    median_impressions = opp_data['impressions'].median()
+    median_ctr = opp_data['ctr_calculated'].median()
+    
+    # Filter out all queries containing "https" in any form
+    opp_data_filtered = opp_data[~opp_data['query'].str.contains('https', case=False, na=False)]
+    
+    # Separate branded and non-branded queries
+    branded_data = opp_data_filtered[opp_data_filtered['query'].apply(is_branded_query)]
+    non_branded_data = opp_data_filtered[~opp_data_filtered['query'].apply(is_branded_query)]
+    
+    # Branded opportunities and top performers
+    branded_opp = branded_data[
+        (branded_data['impressions'] > median_impressions) &
+        (branded_data['ctr_calculated'] < median_ctr)
+    ].sort_values('impressions', ascending=False)
+    
+    branded_top = branded_data[
+        (branded_data['impressions'] > median_impressions) &
+        (branded_data['ctr_calculated'] > median_ctr)
+    ].sort_values('clicks', ascending=False)
+    
+    # Non-branded opportunities and top performers
+    non_branded_opp = non_branded_data[
+        (non_branded_data['impressions'] > median_impressions) &
+        (non_branded_data['ctr_calculated'] < median_ctr)
+    ].sort_values('impressions', ascending=False)
+    
+    non_branded_top = non_branded_data[
+        (non_branded_data['impressions'] > median_impressions) &
+        (non_branded_data['ctr_calculated'] > median_ctr)
+    ].sort_values('clicks', ascending=False)
+    
+    return branded_opp, branded_top, non_branded_opp, non_branded_top
 
 def create_trending_analysis(df):
     """Create trending queries analysis with FIXED position logic"""
@@ -291,7 +350,7 @@ def extract_content_gaps(df):
     return gaps.head(20)
 
 def create_page_performance_analysis(df):
-    """Analyze page-level performance"""
+    """Analyze page-level performance with filtering options"""
     page_perf = df.groupby('page').agg({
         'clicks': 'sum',
         'impressions': 'sum',
@@ -303,7 +362,10 @@ def create_page_performance_analysis(df):
     page_perf = page_perf.rename(columns={'query': 'unique_queries'})
     page_perf = page_perf.sort_values('clicks', ascending=False)
     
-    return page_perf.head(20)
+    # Create filtered version without product-downloads
+    page_perf_filtered = page_perf[~page_perf['page'].str.contains('product-downloads', case=False, na=False)]
+    
+    return page_perf.head(50), page_perf_filtered.head(50)
 
 def main():
     st.markdown('<h1 class="main-header">GSC Analytics Dashboard</h1>', unsafe_allow_html=True)
@@ -380,57 +442,92 @@ def main():
                 opp_fig, opp_data = opp_result
                 st.plotly_chart(opp_fig, use_container_width=True)
                 
-                # FIXED: Insights with proper filtering
+                # NEW: Branded vs Non-branded analysis
+                branded_opp, branded_top, non_branded_opp, non_branded_top = create_branded_non_branded_analysis(opp_data)
+                
                 st.markdown('<div class="insight-box">', unsafe_allow_html=True)
-                st.subheader("Key Insights")
+                st.subheader("Key Insights - Branded vs Non-Branded Analysis")
                 
-                # Calculate medians from the filtered data
-                median_impressions = opp_data['impressions'].median()
-                median_ctr = opp_data['ctr_calculated'].median()
+                # Create tabs for better organization
+                tab1, tab2 = st.tabs(["🎯 Biggest Opportunities", "🏆 Top Performers"])
                 
-                high_opp = opp_data[
-                    (opp_data['impressions'] > median_impressions) &
-                    (opp_data['ctr_calculated'] < median_ctr)
-                ].sort_values('impressions', ascending=False)
+                with tab1:
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown('<div class="branded-section">', unsafe_allow_html=True)
+                        st.write(f"**Branded Opportunities (Forti):** {len(branded_opp)} queries")
+                        if len(branded_opp) > 0:
+                            st.dataframe(
+                                branded_opp[['query', 'impressions', 'clicks', 'ctr_calculated', 'position']].style.format({
+                                    'impressions': '{:,.0f}',
+                                    'clicks': '{:,.0f}',
+                                    'ctr_calculated': '{:.2%}',
+                                    'position': '{:.1f}'
+                                }),
+                                height=400,
+                                use_container_width=True
+                            )
+                        else:
+                            st.info("No branded opportunities found in current filter.")
+                        st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    with col2:
+                        st.markdown('<div class="non-branded-section">', unsafe_allow_html=True)
+                        st.write(f"**Non-Branded Opportunities:** {len(non_branded_opp)} queries")
+                        if len(non_branded_opp) > 0:
+                            st.dataframe(
+                                non_branded_opp[['query', 'impressions', 'clicks', 'ctr_calculated', 'position']].style.format({
+                                    'impressions': '{:,.0f}',
+                                    'clicks': '{:,.0f}',
+                                    'ctr_calculated': '{:.2%}',
+                                    'position': '{:.1f}'
+                                }),
+                                height=400,
+                                use_container_width=True
+                            )
+                        else:
+                            st.info("No non-branded opportunities found in current filter.")
+                        st.markdown('</div>', unsafe_allow_html=True)
                 
-                top_performers = opp_data[
-                    (opp_data['impressions'] > median_impressions) &
-                    (opp_data['ctr_calculated'] > median_ctr)
-                ].sort_values('clicks', ascending=False)
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.write(f"**Biggest Opportunities:** {len(high_opp)} queries with high impressions but low CTR")
-                    if len(high_opp) > 0:
-                        st.dataframe(
-                            high_opp[['query', 'impressions', 'clicks', 'ctr_calculated', 'position']].style.format({
-                                'impressions': '{:,.0f}',
-                                'clicks': '{:,.0f}',
-                                'ctr_calculated': '{:.2%}',
-                                'position': '{:.1f}'
-                            }),
-                            height=400,
-                            use_container_width=True
-                        )
-                    else:
-                        st.info("No high-impression, low-CTR queries found in current filter.")
-                
-                with col2:
-                    st.write(f"**Top Performers:** {len(top_performers)} high-performing queries")
-                    if len(top_performers) > 0:
-                        st.dataframe(
-                            top_performers[['query', 'impressions', 'clicks', 'ctr_calculated', 'position']].style.format({
-                                'impressions': '{:,.0f}',
-                                'clicks': '{:,.0f}',
-                                'ctr_calculated': '{:.2%}',
-                                'position': '{:.1f}'
-                            }),
-                            height=400,
-                            use_container_width=True
-                        )
-                    else:
-                        st.info("No high-performing queries found in current filter.")
+                with tab2:
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown('<div class="branded-section">', unsafe_allow_html=True)
+                        st.write(f"**Branded Top Performers (Forti):** {len(branded_top)} queries")
+                        if len(branded_top) > 0:
+                            st.dataframe(
+                                branded_top[['query', 'impressions', 'clicks', 'ctr_calculated', 'position']].style.format({
+                                    'impressions': '{:,.0f}',
+                                    'clicks': '{:,.0f}',
+                                    'ctr_calculated': '{:.2%}',
+                                    'position': '{:.1f}'
+                                }),
+                                height=400,
+                                use_container_width=True
+                            )
+                        else:
+                            st.info("No branded top performers found in current filter.")
+                        st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    with col2:
+                        st.markdown('<div class="non-branded-section">', unsafe_allow_html=True)
+                        st.write(f"**Non-Branded Top Performers:** {len(non_branded_top)} queries")
+                        if len(non_branded_top) > 0:
+                            st.dataframe(
+                                non_branded_top[['query', 'impressions', 'clicks', 'ctr_calculated', 'position']].style.format({
+                                    'impressions': '{:,.0f}',
+                                    'clicks': '{:,.0f}',
+                                    'ctr_calculated': '{:.2%}',
+                                    'position': '{:.1f}'
+                                }),
+                                height=400,
+                                use_container_width=True
+                            )
+                        else:
+                            st.info("No non-branded top performers found in current filter.")
+                        st.markdown('</div>', unsafe_allow_html=True)
                 
                 st.markdown('</div>', unsafe_allow_html=True)
             else:
@@ -559,22 +656,42 @@ def main():
             st.write("• Consider creating topic clusters around these themes")
             st.markdown('</div>', unsafe_allow_html=True)
         
-        # Page Performance Analysis
+        # Page Performance Analysis - UPDATED with filtering
         st.markdown('<h2 class="section-header">Page Performance Analysis</h2>', unsafe_allow_html=True)
         with st.spinner("Analyzing page performance..."):
-            page_perf = create_page_performance_analysis(filtered_df)
+            page_perf_all, page_perf_filtered = create_page_performance_analysis(filtered_df)
         
-        st.subheader("Top Performing Pages")
-        st.dataframe(
-            page_perf[['page', 'clicks', 'impressions', 'ctr', 'position', 'unique_queries']].style.format({
-                'clicks': '{:,.0f}',
-                'impressions': '{:,.0f}',
-                'ctr': '{:.2%}',
-                'position': '{:.1f}',
-                'unique_queries': '{:,.0f}'
-            }),
-            use_container_width=True
-        )
+        # Create tabs for different views
+        tab1, tab2 = st.tabs(["📄 All Pages (Top 50)", "🚫 Filtered Pages (No Product Downloads)"])
+        
+        with tab1:
+            st.subheader("Top 50 Performing Pages (All)")
+            st.dataframe(
+                page_perf_all[['page', 'clicks', 'impressions', 'ctr', 'position', 'unique_queries']].style.format({
+                    'clicks': '{:,.0f}',
+                    'impressions': '{:,.0f}',
+                    'ctr': '{:.2%}',
+                    'position': '{:.1f}',
+                    'unique_queries': '{:,.0f}'
+                }),
+                use_container_width=True,
+                height=600
+            )
+        
+        with tab2:
+            st.subheader("Top 50 Performing Pages (Excluding Product Downloads)")
+            st.info("This view excludes pages containing 'product-downloads' in the URL for cleaner analysis.")
+            st.dataframe(
+                page_perf_filtered[['page', 'clicks', 'impressions', 'ctr', 'position', 'unique_queries']].style.format({
+                    'clicks': '{:,.0f}',
+                    'impressions': '{:,.0f}',
+                    'ctr': '{:.2%}',
+                    'position': '{:.1f}',
+                    'unique_queries': '{:,.0f}'
+                }),
+                use_container_width=True,
+                height=600
+            )
         
         # Time Series Analysis
         st.markdown('<h2 class="section-header">Performance Over Time</h2>', unsafe_allow_html=True)
@@ -589,24 +706,24 @@ def main():
             rows=2, cols=2,
             subplot_titles=('Daily Clicks', 'Daily Impressions', 'Daily CTR', 'Daily Avg Position'),
             specs=[[{"secondary_y": False}, {"secondary_y": False}],
-                   [{"secondary_y": False}, {"secondary_y": False}]]
+                [{"secondary_y": False}, {"secondary_y": False}]]
         )
         
         fig_time.add_trace(
             go.Scatter(x=daily_perf['date'], y=daily_perf['clicks'], 
-                      mode='lines+markers', name='Clicks', line=dict(color='#3498db', width=2)),
+                    mode='lines+markers', name='Clicks', line=dict(color='#3498db', width=2)),
             row=1, col=1
         )
         
         fig_time.add_trace(
             go.Scatter(x=daily_perf['date'], y=daily_perf['impressions'], 
-                      mode='lines+markers', name='Impressions', line=dict(color='#2ecc71', width=2)),
+                    mode='lines+markers', name='Impressions', line=dict(color='#2ecc71', width=2)),
             row=1, col=2
         )
         
         fig_time.add_trace(
             go.Scatter(x=daily_perf['date'], y=daily_perf['ctr'], 
-                      mode='lines+markers', name='CTR', line=dict(color='#e74c3c', width=2)),
+                    mode='lines+markers', name='CTR', line=dict(color='#e74c3c', width=2)),
             row=2, col=1
         )
         
@@ -621,7 +738,7 @@ def main():
         
         # Export functionality
         st.markdown('<h2 class="section-header">Export Analysis</h2>', unsafe_allow_html=True)
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             if st.button("Export Opportunity Data"):
@@ -634,15 +751,51 @@ def main():
                         mime="text/csv"
                     )
                 else:
-                    st.warning("No content gaps to export")
+                    st.warning("No opportunity data to export")
+        
+        with col2:
+            if st.button("Export Branded Analysis"):
+                if 'branded_opp' in locals() and len(branded_opp) > 0:
+                    # Combine branded opportunities and top performers
+                    branded_combined = pd.concat([
+                        branded_opp.assign(type='Opportunity'),
+                        branded_top.assign(type='Top Performer')
+                    ], ignore_index=True)
+                    csv = branded_combined.to_csv(index=False)
+                    st.download_button(
+                        label="Download CSV",
+                        data=csv,
+                        file_name="branded_analysis.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.warning("No branded data to export")
         
         with col3:
+            if st.button("Export Non-Branded Analysis"):
+                if 'non_branded_opp' in locals() and len(non_branded_opp) > 0:
+                    # Combine non-branded opportunities and top performers
+                    non_branded_combined = pd.concat([
+                        non_branded_opp.assign(type='Opportunity'),
+                        non_branded_top.assign(type='Top Performer')
+                    ], ignore_index=True)
+                    csv = non_branded_combined.to_csv(index=False)
+                    st.download_button(
+                        label="Download CSV",
+                        data=csv,
+                        file_name="non_branded_analysis.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.warning("No non-branded data to export")
+        
+        with col4:
             if st.button("Export Page Performance"):
-                csv = page_perf.to_csv(index=False)
+                csv = page_perf_filtered.to_csv(index=False)
                 st.download_button(
                     label="Download CSV",
                     data=csv,
-                    file_name="page_performance.csv",
+                    file_name="page_performance_filtered.csv",
                     mime="text/csv"
                 )
     
@@ -654,11 +807,17 @@ def main():
         This dashboard helps you analyze your Google Search Console data to:
         
         - **Identify keyword opportunities** using advanced quadrant analysis
+        - **Separate branded vs non-branded queries** for focused analysis (Forti brand filtering)
         - **Track trending queries** to spot winners and losers
         - **Analyze geographic performance** across different countries
         - **Find content gaps** with high potential
-        - **Evaluate page performance** to optimize your best content
+        - **Evaluate page performance** with filtering options (excludes product-downloads)
         - **Monitor trends** over time
+        
+        ### Key Features:
+        - **Branded Analysis**: Automatically separates queries containing "forti" for brand-specific insights
+        - **Enhanced Page Analysis**: Shows top 50 pages with option to filter out product-downloads URLs
+        - **Advanced Export**: Export branded, non-branded, and filtered page data separately
         
         ### To get started:
         1. Upload your GSC CSV file using the sidebar

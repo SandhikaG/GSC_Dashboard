@@ -11,13 +11,15 @@ async def insert_row(client, query, row_data):
         print(f"❌ Error inserting row: {e}")
         return False
 
-async def main():
+async def main(): 
+    # Connect to your Turso DB using HTTPS
     client = create_client(
         url="https://gsc-metrics-archana.aws-ap-south-1.turso.io",
         auth_token="eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NTc0OTM4ODIsImlkIjoiYmJmMjk1YjMtYTk2YS00NjBjLWE5YWYtMDlhMWVjZGViMDQzIiwicmlkIjoiNDQ1ZjI3NTAtMjk5YS00MGI5LWIwYzAtZjhmYjJjYmRhMDk3In0.DwkzaRyDqISqGmRaFj6qgpFUf-Fl2hXMbKsSWGUZ1kiYQ47W99aIRTIANsm-BZhOOaIJxsh2xkWDWd5VeZr2AQ"
     )
 
     try:
+        # ✅ Ensure table exists
         await client.execute("""
         CREATE TABLE IF NOT EXISTS gsc_data (
             date TEXT,
@@ -33,9 +35,11 @@ async def main():
         """)
         print("✅ Table ready")
 
+        # ✅ Load CSV with COMMA separator
         df = pd.read_csv(r"C:\Users\Naveen\Downloads\gsc_data_day_by_day (2).csv", sep=",")
         
-        start_row = 2760000
+        # ✅ RESUME FROM WHERE YOU LEFT OFF
+        start_row = 3390000  # Last processed row was 3,390,000
         if start_row < len(df):
             df = df.iloc[start_row:]
             print(f"✅ Resuming from row {start_row + 1} (processing {len(df)} remaining rows)")
@@ -43,11 +47,13 @@ async def main():
             print("✅ All rows have already been processed!")
             return
 
+        # Debug: Print column names and first few rows
         print("CSV Columns:", df.columns.tolist())
         print("Number of rows to process:", len(df))
         print("First few rows:")
         print(df.head())
 
+        # ✅ Prepare upsert query
         upsert_query = """
             INSERT INTO gsc_data (date, country, query, page, clicks, impressions, ctr, position)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -59,8 +65,9 @@ async def main():
                 position = excluded.position
         """
 
-        batch_size = 5000 
-        semaphore = asyncio.Semaphore(10)
+        # ✅ Process in concurrent batches
+        batch_size = 5000  # Adjust based on your system performance
+        semaphore = asyncio.Semaphore(10)  # Limit concurrent connections
 
         async def insert_with_semaphore(row_data):
             async with semaphore:
@@ -69,9 +76,11 @@ async def main():
         total_rows = len(df)
         successful_inserts = 0
 
+        # Process in batches
         for i in range(0, total_rows, batch_size):
             batch = df.iloc[i:i + batch_size]
             
+            # Create tasks for all rows in batch
             tasks = []
             for _, row in batch.iterrows():
                 row_data = [
@@ -86,10 +95,12 @@ async def main():
                 ]
                 tasks.append(insert_with_semaphore(row_data))
             
+            # Execute all tasks concurrently
             results = await asyncio.gather(*tasks, return_exceptions=True)
             batch_successes = sum(1 for r in results if r is True)
             successful_inserts += batch_successes
             
+            # Show progress with original row numbers
             original_start_row = start_row + i
             original_end_row = min(start_row + i + batch_size, start_row + total_rows)
             print(f"✅ Processed batch {original_start_row//batch_size + 1}: {original_end_row}/{start_row + total_rows} rows (Success: {batch_successes}/{len(tasks)})")
