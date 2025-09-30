@@ -692,49 +692,311 @@ def main():
                 use_container_width=True,
                 height=600
             )
-        
-        # Time Series Analysis
+        # Time Series Analysis - ENHANCED WITH WEEKLY VIEW AND NEW METRICS
         st.markdown('<h2 class="section-header">Performance Over Time</h2>', unsafe_allow_html=True)
-        daily_perf = filtered_df.groupby('date').agg({
-            'clicks': 'sum',
-            'impressions': 'sum',
-            'position': 'mean'
-        }).reset_index()
-        daily_perf['ctr'] = daily_perf['clicks'] / daily_perf['impressions']
         
-        fig_time = make_subplots(
-            rows=2, cols=2,
-            subplot_titles=('Daily Clicks', 'Daily Impressions', 'Daily CTR', 'Daily Avg Position'),
-            specs=[[{"secondary_y": False}, {"secondary_y": False}],
-                [{"secondary_y": False}, {"secondary_y": False}]]
-        )
+        # Create tabs for daily and weekly views
+        time_tab1, time_tab2 = st.tabs(["📅 Daily View", "📊 Weekly View"])
         
-        fig_time.add_trace(
-            go.Scatter(x=daily_perf['date'], y=daily_perf['clicks'], 
-                    mode='lines+markers', name='Clicks', line=dict(color='#3498db', width=2)),
-            row=1, col=1
-        )
+        with time_tab1:
+            # Daily aggregation with new metrics
+            daily_perf = filtered_df.groupby('date').agg({
+                'clicks': 'sum',
+                'impressions': 'sum',
+                'position': 'mean',
+                'query': 'nunique',
+                'page': 'nunique'
+            }).reset_index()
+            daily_perf['ctr'] = daily_perf['clicks'] / daily_perf['impressions']
+            daily_perf = daily_perf.rename(columns={
+                'query': 'unique_queries',
+                'page': 'unique_urls'
+            })
+            
+            fig_daily = make_subplots(
+                rows=3, cols=2,
+                subplot_titles=('Daily Clicks', 'Daily Impressions', 
+                              'Daily CTR', 'Daily Avg Position',
+                              'Unique Ranking Queries', 'Unique Ranking URLs'),
+                specs=[[{"secondary_y": False}, {"secondary_y": False}],
+                      [{"secondary_y": False}, {"secondary_y": False}],
+                      [{"secondary_y": False}, {"secondary_y": False}]]
+            )
+            
+            fig_daily.add_trace(
+                go.Scatter(x=daily_perf['date'], y=daily_perf['clicks'], 
+                        mode='lines+markers', name='Clicks', line=dict(color='#3498db', width=2)),
+                row=1, col=1
+            )
+            
+            fig_daily.add_trace(
+                go.Scatter(x=daily_perf['date'], y=daily_perf['impressions'], 
+                        mode='lines+markers', name='Impressions', line=dict(color='#2ecc71', width=2)),
+                row=1, col=2
+            )
+            
+            fig_daily.add_trace(
+                go.Scatter(x=daily_perf['date'], y=daily_perf['ctr'], 
+                        mode='lines+markers', name='CTR', line=dict(color='#e74c3c', width=2)),
+                row=2, col=1
+            )
+            
+            fig_daily.add_trace(
+                go.Scatter(x=daily_perf['date'], y=daily_perf['position'], 
+                          mode='lines+markers', name='Position', line=dict(color='#f39c12', width=2)),
+                row=2, col=2
+            )
+            
+            fig_daily.add_trace(
+                go.Scatter(x=daily_perf['date'], y=daily_perf['unique_queries'], 
+                          mode='lines+markers', name='Unique Queries', line=dict(color='#9b59b6', width=2)),
+                row=3, col=1
+            )
+            
+            fig_daily.add_trace(
+                go.Scatter(x=daily_perf['date'], y=daily_perf['unique_urls'], 
+                          mode='lines+markers', name='Unique URLs', line=dict(color='#e67e22', width=2)),
+                row=3, col=2
+            )
+            
+            fig_daily.update_layout(height=900, showlegend=False, title_text="<b>Daily Performance Trends</b>")
+            st.plotly_chart(fig_daily, use_container_width=True)
+            
+            # Show correlation insights
+            st.markdown('<div class="insight-box">', unsafe_allow_html=True)
+            st.write("**Daily Insights:**")
+            st.write(f"• Average unique queries per day: **{daily_perf['unique_queries'].mean():,.0f}**")
+            st.write(f"• Average unique URLs per day: **{daily_perf['unique_urls'].mean():,.0f}**")
+            st.markdown('</div>', unsafe_allow_html=True)
         
-        fig_time.add_trace(
-            go.Scatter(x=daily_perf['date'], y=daily_perf['impressions'], 
-                    mode='lines+markers', name='Impressions', line=dict(color='#2ecc71', width=2)),
-            row=1, col=2
-        )
-        
-        fig_time.add_trace(
-            go.Scatter(x=daily_perf['date'], y=daily_perf['ctr'], 
-                    mode='lines+markers', name='CTR', line=dict(color='#e74c3c', width=2)),
-            row=2, col=1
-        )
-        
-        fig_time.add_trace(
-            go.Scatter(x=daily_perf['date'], y=daily_perf['position'], 
-                      mode='lines+markers', name='Position', line=dict(color='#f39c12', width=2)),
-            row=2, col=2
-        )
-        
-        fig_time.update_layout(height=600, showlegend=False, title_text="<b>Performance Trends Over Time</b>")
-        st.plotly_chart(fig_time, use_container_width=True)
+        with time_tab2:
+            # Weekly aggregation
+            weekly_df = filtered_df.copy()
+            weekly_df['week'] = weekly_df['date'].dt.to_period('W').apply(lambda r: r.start_time)
+            
+            weekly_perf = weekly_df.groupby('week').agg({
+                'clicks': 'sum',
+                'impressions': 'sum',
+                'position': 'mean',
+                'query': 'nunique',
+                'page': 'nunique'
+            }).reset_index()
+            weekly_perf['ctr'] = weekly_perf['clicks'] / weekly_perf['impressions']
+            weekly_perf = weekly_perf.rename(columns={
+                'query': 'unique_queries',
+                'page': 'unique_urls'
+            })
+            
+            fig_weekly = make_subplots(
+                rows=3, cols=2,
+                subplot_titles=('Weekly Clicks', 'Weekly Impressions', 
+                              'Weekly CTR', 'Weekly Avg Position',
+                              'Unique Ranking Queries', 'Unique Ranking URLs'),
+                specs=[[{"secondary_y": False}, {"secondary_y": False}],
+                      [{"secondary_y": False}, {"secondary_y": False}],
+                      [{"secondary_y": False}, {"secondary_y": False}]]
+            )
+            
+            fig_weekly.add_trace(
+                go.Scatter(x=weekly_perf['week'], y=weekly_perf['clicks'], 
+                        mode='lines+markers', name='Clicks', line=dict(color='#3498db', width=2),
+                        marker=dict(size=8)),
+                row=1, col=1
+            )
+            
+            fig_weekly.add_trace(
+                go.Scatter(x=weekly_perf['week'], y=weekly_perf['impressions'], 
+                        mode='lines+markers', name='Impressions', line=dict(color='#2ecc71', width=2),
+                        marker=dict(size=8)),
+                row=1, col=2
+            )
+            
+            fig_weekly.add_trace(
+                go.Scatter(x=weekly_perf['week'], y=weekly_perf['ctr'], 
+                        mode='lines+markers', name='CTR', line=dict(color='#e74c3c', width=2),
+                        marker=dict(size=8)),
+                row=2, col=1
+            )
+            
+            fig_weekly.add_trace(
+                go.Scatter(x=weekly_perf['week'], y=weekly_perf['position'], 
+                          mode='lines+markers', name='Position', line=dict(color='#f39c12', width=2),
+                          marker=dict(size=8)),
+                row=2, col=2
+            )
+            
+            fig_weekly.add_trace(
+                go.Scatter(x=weekly_perf['week'], y=weekly_perf['unique_queries'], 
+                        mode='lines+markers', name='Unique Queries', line=dict(color='#9b59b6', width=2),
+                        marker=dict(size=8)),
+                row=3, col=1
+            )
+            
+            fig_weekly.add_trace(
+                go.Scatter(x=weekly_perf['week'], y=weekly_perf['unique_urls'], 
+                        mode='lines+markers', name='Unique URLs', line=dict(color='#e67e22', width=2),
+                        marker=dict(size=8)),
+                row=3, col=2
+            )
+            
+            fig_weekly.update_layout(height=900, showlegend=False, title_text="<b>Weekly Performance Trends</b>")
+            st.plotly_chart(fig_weekly, use_container_width=True)
+            
+            # Weekly Click Drop Analysis
+            st.markdown('<h3 class="section-header">Weekly Click Changes & Query Analysis</h3>', unsafe_allow_html=True)
+
+            if len(weekly_perf) > 1:
+                # Calculate week-over-week changes
+                for i in range(1, len(weekly_perf)):
+                    prev_week = weekly_perf.iloc[i-1]
+                    curr_week = weekly_perf.iloc[i]
+                    
+                    click_change = curr_week['clicks'] - prev_week['clicks']
+                    click_pct_change = (click_change / prev_week['clicks'] * 100) if prev_week['clicks'] > 0 else 0
+                    
+                    # Display every week's comparison (both drops and gains)
+                    with st.expander(
+                        f"📊 Week {curr_week['week'].strftime('%b %d')} vs Week {prev_week['week'].strftime('%b %d')} "
+                        f"({'📉 Drop' if click_change < 0 else '📈 Gain'}: {click_change:+,.0f} clicks, {click_pct_change:+.1f}%)",
+                        expanded=(click_change < 0)  # Auto-expand only drops
+                    ):
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Previous Week", f"{prev_week['clicks']:,.0f}")
+                        with col2:
+                            st.metric("Current Week", f"{curr_week['clicks']:,.0f}", 
+                                    delta=f"{click_change:,.0f}")
+                        with col3:
+                            st.metric("Change %", f"{click_pct_change:+.1f}%")
+                        
+                        # Calculate week boundaries
+                        curr_week_start = curr_week['week']
+                        curr_week_end = curr_week_start + timedelta(days=6)
+                        prev_week_start = prev_week['week']
+                        prev_week_end = prev_week_start + timedelta(days=6)
+                        
+                        # Get query-level data for both weeks
+                        prev_week_queries = filtered_df[
+                            (filtered_df['date'] >= prev_week_start) & 
+                            (filtered_df['date'] <= prev_week_end)
+                        ].groupby('query').agg({
+                            'clicks': 'sum', 
+                            'impressions': 'sum', 
+                            'position': 'mean'
+                        }).reset_index()
+                        
+                        curr_week_queries = filtered_df[
+                            (filtered_df['date'] >= curr_week_start) & 
+                            (filtered_df['date'] <= curr_week_end)
+                        ].groupby('query').agg({
+                            'clicks': 'sum', 
+                            'impressions': 'sum', 
+                            'position': 'mean'
+                        }).reset_index()
+                        
+                        # Merge and calculate changes
+                        query_comparison = pd.merge(
+                            prev_week_queries, 
+                            curr_week_queries, 
+                            on='query', 
+                            how='outer', 
+                            suffixes=('_prev', '_curr')
+                        ).fillna(0)
+                        
+                        query_comparison['click_change'] = query_comparison['clicks_curr'] - query_comparison['clicks_prev']
+                        query_comparison['click_pct_change'] = np.where(
+                            query_comparison['clicks_prev'] > 0,
+                            (query_comparison['click_change'] / query_comparison['clicks_prev']) * 100,
+                            np.nan
+                        )
+                        query_comparison['position_change'] = query_comparison['position_curr'] - query_comparison['position_prev']
+                        
+                        # Always show BOTH top losers and top gainers for every week
+                        top_losers = query_comparison[
+                            (query_comparison['click_change'] < 0) & 
+                            (query_comparison['clicks_prev'] >= 3)
+                        ].sort_values('click_change', ascending=True).head(20)
+
+                        top_gainers = query_comparison[
+                            (query_comparison['click_change'] > 0) & 
+                            (query_comparison['clicks_curr'] >= 3)
+                        ].sort_values('click_change', ascending=False).head(20)
+
+                        # Show losers first
+                        if len(top_losers) > 0:
+                            st.markdown('<div class="warning-box">', unsafe_allow_html=True)
+                            st.write(f"**Top Queries with Decreased Clicks** ({len(top_losers)} queries shown)")
+                            
+                            display_losers = top_losers[['query', 'clicks_prev', 'clicks_curr', 'click_change', 
+                                                        'click_pct_change', 'position_prev', 'position_curr', 
+                                                        'position_change']].copy()
+                            
+                            st.dataframe(
+                                display_losers.rename(columns={
+                                    'query': 'Query',
+                                    'clicks_prev': 'Prev Clicks',
+                                    'clicks_curr': 'Curr Clicks',
+                                    'click_change': 'Change',
+                                    'click_pct_change': 'Change %',
+                                    'position_prev': 'Prev Pos',
+                                    'position_curr': 'Curr Pos',
+                                    'position_change': 'Pos Δ'
+                                }).style.format({
+                                    'Prev Clicks': '{:.0f}',
+                                    'Curr Clicks': '{:.0f}',
+                                    'Change': '{:+.0f}',
+                                    'Change %': '{:+.1f}%',
+                                    'Prev Pos': '{:.1f}',
+                                    'Curr Pos': '{:.1f}',
+                                    'Pos Δ': '{:+.1f}'
+                                }),
+                                use_container_width=True,
+                                height=400
+                            )
+                            st.markdown('</div>', unsafe_allow_html=True)
+                        else:
+                            st.info("No queries with decreased clicks found.")
+
+                        # Show gainers second
+                        if len(top_gainers) > 0:
+                            st.markdown('<div class="branded-section">', unsafe_allow_html=True)
+                            st.write(f"**Top Queries with Increased Clicks** ({len(top_gainers)} queries shown)")
+                            
+                            display_gainers = top_gainers[['query', 'clicks_prev', 'clicks_curr', 'click_change', 
+                                                        'click_pct_change', 'position_prev', 'position_curr', 
+                                                        'position_change']].copy()
+                            
+                            st.dataframe(
+                                display_gainers.rename(columns={
+                                    'query': 'Query',
+                                    'clicks_prev': 'Prev Clicks',
+                                    'clicks_curr': 'Curr Clicks',
+                                    'click_change': 'Change',
+                                    'click_pct_change': 'Change %',
+                                    'position_prev': 'Prev Pos',
+                                    'position_curr': 'Curr Pos',
+                                    'position_change': 'Pos Δ'
+                                }).style.format({
+                                    'Prev Clicks': '{:.0f}',
+                                    'Curr Clicks': '{:.0f}',
+                                    'Change': '{:+.0f}',
+                                    'Change %': '{:+.1f}%',
+                                    'Prev Pos': '{:.1f}',
+                                    'Curr Pos': '{:.1f}',
+                                    'Pos Δ': '{:+.1f}'
+                                }),
+                                use_container_width=True,
+                                height=400
+                            )
+                            st.markdown('</div>', unsafe_allow_html=True)
+                        else:
+                            st.info("No queries with increased clicks found.")
+            
+            # Show weekly insights
+            st.markdown('<div class="insight-box">', unsafe_allow_html=True)
+            st.write("**Weekly Insights:**")
+            st.write(f"• Average unique queries per week: **{weekly_perf['unique_queries'].mean():,.0f}**")
+            st.write(f"• Average unique URLs per week: **{weekly_perf['unique_urls'].mean():,.0f}**")
         
         # Export functionality
         st.markdown('<h2 class="section-header">Export Analysis</h2>', unsafe_allow_html=True)
@@ -833,4 +1095,4 @@ def main():
         """)
 
 if __name__ == "__main__":
-    main()
+    main()  
