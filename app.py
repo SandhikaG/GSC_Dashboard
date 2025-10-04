@@ -371,7 +371,7 @@ def main():
     # Sidebar for file upload and filters
     st.sidebar.header("Data Upload")
     uploaded_file = st.sidebar.file_uploader("Choose GSC CSV file", type="csv")
-    uploaded_file=r"C:\Users\Naveen\Downloads\gsc_data_day_by_day (3).csv"
+    # uploaded_file=r"C:\Users\Naveen\Downloads\gsc_data_day_by_day (3).csv"
     
     if uploaded_file is not None:
         # Load data
