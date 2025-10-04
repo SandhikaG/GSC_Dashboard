@@ -6,8 +6,6 @@ from plotly.subplots import make_subplots
 import numpy as np
 from datetime import datetime, timedelta
 import altair as alt
-from collections import Counter
-import re
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -172,9 +170,9 @@ def create_opportunity_quadrant(df):
                  bordercolor="gray", borderwidth=1),
             # Bottom Right Quadrant: Biggest Opportunities (High impressions, Low CTR)
             dict(x=0.85, y=0.15, xref='paper', yref='paper',
-                 text="<b>Biggest<br>Opportunities</b>", showarrow=False, 
-                 font=dict(color="orange", size=12), bgcolor="rgba(255,255,255,0.8)",
-                 bordercolor="orange", borderwidth=1),
+                text="<b>Biggest<br>Opportunities</b>", showarrow=False, 
+                font=dict(color="orange", size=12), bgcolor="rgba(255,255,255,0.8)",
+                bordercolor="orange", borderwidth=1),
         ],
         height=600
     )
@@ -194,7 +192,7 @@ def create_branded_non_branded_analysis(opp_data):
     opp_data_filtered = opp_data[~opp_data['query'].str.contains('https', case=False, na=False)]
     
     # Separate branded and non-branded queries
-    branded_data = opp_data_filtered[opp_data_filtered['query'].apply(is_branded_query)]
+    branded_data = opp_data_filtered[opp_data_filtered['query'].apply(is_branded_query)].reset_index(drop=True)
     non_branded_data = opp_data_filtered[~opp_data_filtered['query'].apply(is_branded_query)]
     
     # Branded opportunities and top performers
@@ -373,6 +371,7 @@ def main():
     # Sidebar for file upload and filters
     st.sidebar.header("Data Upload")
     uploaded_file = st.sidebar.file_uploader("Choose GSC CSV file", type="csv")
+    uploaded_file=r"C:\Users\Naveen\Downloads\gsc_data_day_by_day (3).csv"
     
     if uploaded_file is not None:
         # Load data
