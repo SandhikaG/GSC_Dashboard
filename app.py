@@ -526,13 +526,15 @@ def main():
                         st.markdown('<div class="branded-section">', unsafe_allow_html=True)
                         st.write(f"**Branded Opportunities (Forti):** {len(branded_opp)} queries")
                         if len(branded_opp) > 0:
-                            st.dataframe(
-                                branded_opp[['query', 'impressions', 'clicks', 'ctr_calculated', 'position']].style.format({
-                                    'impressions': '{:,.0f}',
-                                    'clicks': '{:,.0f}',
-                                    'ctr_calculated': '{:.2%}',
-                                    'position': '{:.1f}'
-                                }),
+                           st.dataframe(
+                                branded_opp[['query', 'impressions', 'clicks', 'ctr_calculated', 'position']]
+                                    .reset_index(drop=True)
+                                    .style.format({
+                                        'impressions': '{:,.0f}',
+                                        'clicks': '{:,.0f}',
+                                        'ctr_calculated': '{:.2%}',
+                                        'position': '{:.1f}'
+                                        }),
                                 height=400,
                                 use_container_width=True
                             )
@@ -545,7 +547,9 @@ def main():
                         st.write(f"**Non-Branded Opportunities:** {len(non_branded_opp)} queries")
                         if len(non_branded_opp) > 0:
                             st.dataframe(
-                                non_branded_opp[['query', 'impressions', 'clicks', 'ctr_calculated', 'position']].style.format({
+                                non_branded_opp[['query', 'impressions', 'clicks', 'ctr_calculated', 'position']]
+                                .reset_index(drop=True)
+                                .style.format({
                                     'impressions': '{:,.0f}',
                                     'clicks': '{:,.0f}',
                                     'ctr_calculated': '{:.2%}',
@@ -566,7 +570,8 @@ def main():
                         st.write(f"**Branded Top Performers (Forti):** {len(branded_top)} queries")
                         if len(branded_top) > 0:
                             st.dataframe(
-                                branded_top[['query', 'impressions', 'clicks', 'ctr_calculated', 'position']].style.format({
+                                branded_top[['query', 'impressions', 'clicks', 'ctr_calculated', 'position']]
+                                .reset_index(drop=True).style.format({
                                     'impressions': '{:,.0f}',
                                     'clicks': '{:,.0f}',
                                     'ctr_calculated': '{:.2%}',
@@ -584,7 +589,8 @@ def main():
                         st.write(f"**Non-Branded Top Performers:** {len(non_branded_top)} queries")
                         if len(non_branded_top) > 0:
                             st.dataframe(
-                                non_branded_top[['query', 'impressions', 'clicks', 'ctr_calculated', 'position']].style.format({
+                                non_branded_top[['query', 'impressions', 'clicks', 'ctr_calculated', 'position']]
+                                .reset_index(drop=True).style.format({
                                     'impressions': '{:,.0f}',
                                     'clicks': '{:,.0f}',
                                     'ctr_calculated': '{:.2%}',
@@ -611,7 +617,7 @@ def main():
             # Top countries table
             st.subheader("Top Performing Countries")
             st.dataframe(
-                country_data.head(10).style.format({
+                country_data.head(10).reset_index(drop=True).style.format({
                     'clicks': '{:,.0f}',
                     'impressions': '{:,.0f}',
                     'ctr': '{:.2%}',
@@ -697,7 +703,7 @@ def main():
                 st.plotly_chart(fig_spanish_countries, use_container_width=True)
                 
                 st.dataframe(
-                    spanish_by_country.style.format({
+                    spanish_by_country.reset_index(drop=True).style.format({
                         'clicks': '{:,.0f}',
                         'impressions': '{:,.0f}',
                         'ctr': '{:.2%}',
@@ -712,7 +718,8 @@ def main():
                 with tab1:
                     st.subheader("Top 30 Queries in Spanish-Speaking Markets")
                     st.dataframe(
-                        spanish_top_queries[['query', 'clicks', 'impressions', 'ctr', 'position']].style.format({
+                        spanish_top_queries[['query', 'clicks', 'impressions', 'ctr', 'position']].reset_index(drop=True)
+                        .style.format({
                             'clicks': '{:,.0f}',
                             'impressions': '{:,.0f}',
                             'ctr': '{:.2%}',
@@ -725,7 +732,8 @@ def main():
                 with tab2:
                     st.subheader("Top 30 Pages in Spanish-Speaking Markets")
                     st.dataframe(
-                        spanish_top_pages[['page', 'clicks', 'impressions', 'ctr', 'position', 'unique_queries']].style.format({
+                        spanish_top_pages[['page', 'clicks', 'impressions', 'ctr', 'position', 'unique_queries']].reset_index(drop=True)
+                        .style.format({
                             'clicks': '{:,.0f}',
                             'impressions': '{:,.0f}',
                             'ctr': '{:.2%}',
@@ -766,7 +774,7 @@ def main():
                             'position_p2': 'Pos (New)',
                             'position_trend': 'Pos Trend',
                             'improvement_score': 'Score'
-                        }).style.format({
+                        }).reset_index(drop=True).style.format({
                             'Clicks (Old)': '{:.0f}',
                             'Clicks (New)': '{:.0f}',
                             'Pos (Old)': '{:.1f}',
@@ -798,7 +806,7 @@ def main():
                             'position_p2': 'Pos (New)',
                             'position_trend': 'Pos Trend',
                             'improvement_score': 'Score'
-                        }).style.format({
+                        }).reset_index(drop=True).style.format({
                             'Clicks (Old)': '{:.0f}',
                             'Clicks (New)': '{:.0f}',
                             'Pos (Old)': '{:.1f}',
@@ -826,7 +834,7 @@ def main():
             gap_display['opportunity_score'] = gap_display['impressions'] * (1 - gap_display['ctr'])
             
             st.dataframe(
-                gap_display[['query', 'impressions', 'clicks', 'ctr', 'position', 'opportunity_score']].style.format({
+                gap_display[['query', 'impressions', 'clicks', 'ctr', 'position', 'opportunity_score']].reset_index(drop=True).style.format({
                     'impressions': '{:,.0f}',
                     'clicks': '{:,.0f}',
                     'ctr': '{:.2%}',
@@ -854,7 +862,8 @@ def main():
         with tab1:
             st.subheader("Top 50 Performing Pages (All)")
             st.dataframe(
-                page_perf_all[['page', 'clicks', 'impressions', 'ctr', 'position', 'unique_queries']].style.format({
+                page_perf_all[['page', 'clicks', 'impressions', 'ctr', 'position', 'unique_queries']]
+                .reset_index(drop=True).style.format({
                     'clicks': '{:,.0f}',
                     'impressions': '{:,.0f}',
                     'ctr': '{:.2%}',
@@ -869,7 +878,8 @@ def main():
             st.subheader("Top 50 Performing Pages (Excluding Product Downloads)")
             st.info("This view excludes pages containing 'product-downloads' in the URL for cleaner analysis.")
             st.dataframe(
-                page_perf_filtered[['page', 'clicks', 'impressions', 'ctr', 'position', 'unique_queries']].style.format({
+                page_perf_filtered[['page', 'clicks', 'impressions', 'ctr', 'position', 'unique_queries']]
+                .reset_index(drop=True).style.format({
                     'clicks': '{:,.0f}',
                     'impressions': '{:,.0f}',
                     'ctr': '{:.2%}',
@@ -885,7 +895,8 @@ def main():
             st.info("This view shows only pages containing '/resources/data-sheets/' in the URL.")
             if len(page_perf_datasheets) > 0:
                 st.dataframe(
-                    page_perf_datasheets[['page', 'clicks', 'impressions', 'ctr', 'position', 'unique_queries']].style.format({
+                    page_perf_datasheets[['page', 'clicks', 'impressions', 'ctr', 'position', 'unique_queries']]
+                    .reset_index(drop=True).style.format({
                         'clicks': '{:,.0f}',
                         'impressions': '{:,.0f}',
                         'ctr': '{:.2%}',
@@ -1156,7 +1167,7 @@ def main():
                                     'position_prev': 'Prev Pos',
                                     'position_curr': 'Curr Pos',
                                     'position_change': 'Pos Δ'
-                                }).style.format({
+                                }).reset_index(drop=True).style.format({
                                     'Prev Clicks': '{:.0f}',
                                     'Curr Clicks': '{:.0f}',
                                     'Change': '{:+.0f}',
@@ -1191,7 +1202,7 @@ def main():
                                     'position_prev': 'Prev Pos',
                                     'position_curr': 'Curr Pos',
                                     'position_change': 'Pos Δ'
-                                }).style.format({
+                                }).reset_index(drop=True).style.format({
                                     'Prev Clicks': '{:.0f}',
                                     'Curr Clicks': '{:.0f}',
                                     'Change': '{:+.0f}',
