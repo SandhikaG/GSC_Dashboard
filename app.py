@@ -439,7 +439,7 @@ def main():
     st.markdown('<h1 class="main-header">GSC Analytics Dashboard</h1>', unsafe_allow_html=True)
     
     # Define the path to the data file
-    data_path = "Data/gsc_data_day_by_day (4).csv"
+    data_path = "Data/gsc_data_day_by_day.csv"
 
     try:
         # Load data from the fixed path

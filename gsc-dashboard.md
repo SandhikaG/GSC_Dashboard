@@ -42,7 +42,7 @@ cd Data
 * Example `scp` command from local to server:
 
 ```bash
-scp -i "C:\Users\Naveen\.ssh\id_rsa" "C:\Users\Naveen\Downloads\gsc_data_day_by_day_3.csv" root@<server-ip>:/root/apps/gsc-dashboard/Data/
+scp -i "C:\Users\Naveen\.ssh\id_rsa" "C:\Users\Naveen\Downloads\gsc_data_day_by_day.csv" root@198.199.120.213:/root/apps/gsc-dashboard/Data/
 ```
 
 ---
