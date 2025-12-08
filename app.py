@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px 
+import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
@@ -90,9 +90,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 @st.cache_data
-def load_data(uploaded_file):
-    """Load and preprocess GSC data"""
-    df = pd.read_csv(uploaded_file)
+def load_data(filepath):
+    """Load and preprocess GSC data from a specified filepath"""
+    df = pd.read_csv(filepath)
     try:
         df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
     except ValueError:
@@ -109,6 +109,73 @@ def is_branded_query(query, brand_terms=['forti']):
     """Check if a query contains branded terms"""
     query_lower = query.lower()
     return any(term in query_lower for term in brand_terms)
+
+def get_spanish_speaking_countries():
+    """Return list of Spanish-speaking countries (lowercase codes)"""
+    return ['esp', 'mex', 'arg', 'col', 'chl', 'per', 'ven', 'ecu', 
+            'gtm', 'cub', 'bol', 'dom', 'hnd', 'pry', 'slv', 'nic', 
+            'cri', 'pan', 'ury', 'gnq', 'pri']
+
+def create_spanish_market_analysis(df):
+    """Create comprehensive Spanish-speaking markets analysis"""
+    spanish_countries = get_spanish_speaking_countries()
+    
+    # Separate Spanish-speaking and rest of world (compare lowercase to be robust)
+    df_spanish = df[df['country'].str.lower().isin(spanish_countries)].copy()
+    df_row = df[~df['country'].str.lower().isin(spanish_countries)].copy()
+    
+    if len(df_spanish) == 0:
+        return None, None, None, None, None
+    
+    # Aggregate metrics
+    spanish_metrics = {
+        'clicks': df_spanish['clicks'].sum(),
+        'impressions': df_spanish['impressions'].sum(),
+        'avg_ctr': df_spanish['clicks'].sum() / df_spanish['impressions'].sum() if df_spanish['impressions'].sum() > 0 else 0,
+        'avg_position': df_spanish['position'].mean(),
+        'unique_queries': df_spanish['query'].nunique(),
+        'unique_pages': df_spanish['page'].nunique()
+    }
+    
+    row_metrics = {
+        'clicks': df_row['clicks'].sum(),
+        'impressions': df_row['impressions'].sum(),
+        'avg_ctr': df_row['clicks'].sum() / df_row['impressions'].sum() if df_row['impressions'].sum() > 0 else 0,
+        'avg_position': df_row['position'].mean(),
+        'unique_queries': df_row['query'].nunique(),
+        'unique_pages': df_row['page'].nunique()
+    }
+    
+    # Top queries in Spanish markets
+    spanish_top_queries = df_spanish.groupby('query').agg({
+        'clicks': 'sum',
+        'impressions': 'sum',
+        'position': 'mean'
+    }).reset_index()
+    spanish_top_queries['ctr'] = spanish_top_queries['clicks'] / spanish_top_queries['impressions']
+    spanish_top_queries = spanish_top_queries.sort_values('clicks', ascending=False).head(30)
+    
+    # Top pages in Spanish markets
+    spanish_top_pages = df_spanish.groupby('page').agg({
+        'clicks': 'sum',
+        'impressions': 'sum',
+        'position': 'mean',
+        'query': 'nunique'
+    }).reset_index()
+    spanish_top_pages['ctr'] = spanish_top_pages['clicks'] / spanish_top_pages['impressions']
+    spanish_top_pages = spanish_top_pages.rename(columns={'query': 'unique_queries'})
+    spanish_top_pages = spanish_top_pages.sort_values('clicks', ascending=False).head(30)
+    
+    # Country breakdown
+    spanish_by_country = df_spanish.groupby('country').agg({
+        'clicks': 'sum',
+        'impressions': 'sum',
+        'position': 'mean'
+    }).reset_index()
+    spanish_by_country['ctr'] = spanish_by_country['clicks'] / spanish_by_country['impressions']
+    spanish_by_country = spanish_by_country.sort_values('clicks', ascending=False)
+    
+    return spanish_metrics, row_metrics, spanish_top_queries, spanish_top_pages, spanish_by_country
 
 def create_opportunity_quadrant(df):
     df_agg = df.groupby('query').agg({
@@ -285,33 +352,33 @@ def create_country_analysis(df):
     fig = make_subplots(
         rows=2, cols=2,
         subplot_titles=('Clicks by Country', 'Impressions by Country', 
-                       'CTR by Country', 'Average Position by Country'),
+                    'CTR by Country', 'Average Position by Country'),
         specs=[[{"type": "bar"}, {"type": "bar"}],
-               [{"type": "bar"}, {"type": "bar"}]]
+            [{"type": "bar"}, {"type": "bar"}]]
     )
     
     # Add traces
     fig.add_trace(
         go.Bar(x=country_perf['country'], y=country_perf['clicks'], 
-               name='Clicks', marker_color='#3498db'),
+            name='Clicks', marker_color='#3498db'),
         row=1, col=1
     )
     
     fig.add_trace(
         go.Bar(x=country_perf['country'], y=country_perf['impressions'], 
-               name='Impressions', marker_color='#2ecc71'),
+            name='Impressions', marker_color='#2ecc71'),
         row=1, col=2
     )
     
     fig.add_trace(
         go.Bar(x=country_perf['country'], y=country_perf['ctr'], 
-               name='CTR', marker_color='#e74c3c'),
+            name='CTR', marker_color='#e74c3c'),
         row=2, col=1
     )
     
     fig.add_trace(
         go.Bar(x=country_perf['country'], y=country_perf['position'], 
-               name='Position', marker_color='#f39c12'),
+            name='Position', marker_color='#f39c12'),
         row=2, col=2
     )
     
@@ -363,22 +430,24 @@ def create_page_performance_analysis(df):
     # Create filtered version without product-downloads
     page_perf_filtered = page_perf[~page_perf['page'].str.contains('product-downloads', case=False, na=False)]
     
-    return page_perf.head(50), page_perf_filtered.head(50)
+    # Create filtered version for data-sheets only
+    page_perf_datasheets = page_perf[page_perf['page'].str.contains('/resources/data-sheets/', case=False, na=False)]
+    
+    return page_perf.head(50), page_perf_filtered.head(50), page_perf_datasheets.head(50)
 
 def main():
     st.markdown('<h1 class="main-header">GSC Analytics Dashboard</h1>', unsafe_allow_html=True)
     
-    # Sidebar for file upload and filters
-    st.sidebar.header("Data Upload")
-    uploaded_file = st.sidebar.file_uploader("Choose GSC CSV file", type="csv")
-    # uploaded_file=r"C:\Users\Naveen\Downloads\gsc_data_day_by_day (3).csv"
-    
-    if uploaded_file is not None:
-        # Load data
+    # Define the path to the data file
+    data_path = "Data/gsc_data_day_by_day (4).csv"
+
+    try:
+        # Load data from the fixed path
         with st.spinner("Loading data..."):
-            df = load_data(uploaded_file)
+            df = load_data(data_path)
         
-        st.sidebar.success(f"Loaded {len(df):,} rows of data")
+        st.sidebar.header("Data Loaded")
+        st.sidebar.success(f"Loaded {len(df):,} rows")
         
         # Date range info
         st.sidebar.info(f"Date Range: {df['date'].min().strftime('%Y-%m-%d')} to {df['date'].max().strftime('%Y-%m-%d')}")
@@ -551,6 +620,125 @@ def main():
                 use_container_width=True
             )
         
+        with st.expander("🌎 Spanish-Speaking Markets Analysis", expanded=False):
+            st.markdown('<h2 class="section-header">Spanish Market Performance</h2>', unsafe_allow_html=True)
+            with st.spinner("Analyzing Spanish-speaking markets..."):
+                spanish_results = create_spanish_market_analysis(filtered_df)
+            
+            if spanish_results[0] is not None:
+                spanish_metrics, row_metrics, spanish_top_queries, spanish_top_pages, spanish_by_country = spanish_results
+                
+                st.subheader("Spanish-Speaking Countries vs Rest of World")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown('<div class="branded-section">', unsafe_allow_html=True)
+                    st.write("### 🇪🇸 Spanish-Speaking Markets")
+                    metric_col1, metric_col2, metric_col3 = st.columns(3)
+                    with metric_col1:
+                        st.metric("Total Clicks", f"{spanish_metrics['clicks']:,.0f}")
+                        st.metric("Unique Queries", f"{spanish_metrics['unique_queries']:,}")
+                    with metric_col2:
+                        st.metric("Total Impressions", f"{spanish_metrics['impressions']:,.0f}")
+                        st.metric("Unique Pages", f"{spanish_metrics['unique_pages']:,}")
+                    with metric_col3:
+                        st.metric("Avg CTR", f"{spanish_metrics['avg_ctr']:.2%}")
+                        st.metric("Avg Position", f"{spanish_metrics['avg_position']:.1f}")
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                total_clicks = spanish_metrics['clicks'] + row_metrics['clicks']
+                spanish_share = (spanish_metrics['clicks'] / total_clicks * 100) if total_clicks > 0 else 0
+                
+                st.markdown('<div class="insight-box">', unsafe_allow_html=True)
+                st.write(f"**Market Share:** Spanish-speaking countries represent **{spanish_share:.1f}%** of total clicks")
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+                st.subheader("Performance by Spanish-Speaking Country")
+                
+                fig_spanish_countries = make_subplots(
+                    rows=2, cols=2,
+                    subplot_titles=('Clicks by Country', 'Impressions by Country', 
+                                'CTR by Country', 'Average Position by Country'),
+                    specs=[[{"type": "bar"}, {"type": "bar"}],
+                        [{"type": "bar"}, {"type": "bar"}]]
+                )
+                
+                top_spanish_countries = spanish_by_country.head(10)
+                
+                fig_spanish_countries.add_trace(
+                    go.Bar(x=top_spanish_countries['country'], y=top_spanish_countries['clicks'], 
+                        name='Clicks', marker_color='#3498db'),
+                    row=1, col=1
+                )
+                
+                fig_spanish_countries.add_trace(
+                    go.Bar(x=top_spanish_countries['country'], y=top_spanish_countries['impressions'], 
+                        name='Impressions', marker_color='#2ecc71'),
+                    row=1, col=2
+                )
+                
+                fig_spanish_countries.add_trace(
+                    go.Bar(x=top_spanish_countries['country'], y=top_spanish_countries['ctr'], 
+                        name='CTR', marker_color='#e74c3c'),
+                    row=2, col=1
+                )
+                
+                fig_spanish_countries.add_trace(
+                    go.Bar(x=top_spanish_countries['country'], y=top_spanish_countries['position'], 
+                        name='Position', marker_color='#f39c12'),
+                    row=2, col=2
+                )
+                
+                fig_spanish_countries.update_layout(height=800, showlegend=False, 
+                                                title_text="<b>Spanish-Speaking Countries Performance</b>")
+                fig_spanish_countries.update_xaxes(tickangle=45)
+                
+                st.plotly_chart(fig_spanish_countries, use_container_width=True)
+                
+                st.dataframe(
+                    spanish_by_country.style.format({
+                        'clicks': '{:,.0f}',
+                        'impressions': '{:,.0f}',
+                        'ctr': '{:.2%}',
+                        'position': '{:.1f}'
+                    }),
+                    use_container_width=True,
+                    height=400
+                )
+                
+                tab1, tab2 = st.tabs(["🔍 Top Queries", "📄 Top Pages"])
+                
+                with tab1:
+                    st.subheader("Top 30 Queries in Spanish-Speaking Markets")
+                    st.dataframe(
+                        spanish_top_queries[['query', 'clicks', 'impressions', 'ctr', 'position']].style.format({
+                            'clicks': '{:,.0f}',
+                            'impressions': '{:,.0f}',
+                            'ctr': '{:.2%}',
+                            'position': '{:.1f}'
+                        }),
+                        use_container_width=True,
+                        height=600
+                    )
+                
+                with tab2:
+                    st.subheader("Top 30 Pages in Spanish-Speaking Markets")
+                    st.dataframe(
+                        spanish_top_pages[['page', 'clicks', 'impressions', 'ctr', 'position', 'unique_queries']].style.format({
+                            'clicks': '{:,.0f}',
+                            'impressions': '{:,.0f}',
+                            'ctr': '{:.2%}',
+                            'position': '{:.1f}',
+                            'unique_queries': '{:,.0f}'
+                        }),
+                        use_container_width=True,
+                        height=600
+                    )
+                
+            else:
+                st.info("No data available for Spanish-speaking countries in the current filter.")
+        
         # Trending Analysis
         st.markdown('<h2 class="section-header">Trending Queries Analysis</h2>', unsafe_allow_html=True)
         with st.spinner("Analyzing trends..."):
@@ -658,10 +846,10 @@ def main():
         # Page Performance Analysis - UPDATED with filtering
         st.markdown('<h2 class="section-header">Page Performance Analysis</h2>', unsafe_allow_html=True)
         with st.spinner("Analyzing page performance..."):
-            page_perf_all, page_perf_filtered = create_page_performance_analysis(filtered_df)
+            page_perf_all, page_perf_filtered, page_perf_datasheets = create_page_performance_analysis(filtered_df)
         
         # Create tabs for different views
-        tab1, tab2 = st.tabs(["📄 All Pages (Top 50)", "🚫 Filtered Pages (No Product Downloads)"])
+        tab1, tab2, tab3 = st.tabs(["📄 All Pages (Top 50)", "🚫 Filtered Pages (No Product Downloads)", "📊 Data Sheets Only"])
         
         with tab1:
             st.subheader("Top 50 Performing Pages (All)")
@@ -691,6 +879,34 @@ def main():
                 use_container_width=True,
                 height=600
             )
+        
+        with tab3:
+            st.subheader("Data Sheets Performance (/resources/data-sheets/)")
+            st.info("This view shows only pages containing '/resources/data-sheets/' in the URL.")
+            if len(page_perf_datasheets) > 0:
+                st.dataframe(
+                    page_perf_datasheets[['page', 'clicks', 'impressions', 'ctr', 'position', 'unique_queries']].style.format({
+                        'clicks': '{:,.0f}',
+                        'impressions': '{:,.0f}',
+                        'ctr': '{:.2%}',
+                        'position': '{:.1f}',
+                        'unique_queries': '{:,.0f}'
+                    }),
+                    use_container_width=True,
+                    height=600
+                )
+                # Show summary stats
+                st.markdown('<div class="insight-box">', unsafe_allow_html=True)
+                st.write("**Data Sheets Summary:**")
+                st.write(f"• Total Data Sheet Pages: **{len(page_perf_datasheets)}**")
+                st.write(f"• Total Clicks: **{page_perf_datasheets['clicks'].sum():,.0f}**")
+                st.write(f"• Total Impressions: **{page_perf_datasheets['impressions'].sum():,.0f}**")
+                st.write(f"• Average CTR: **{page_perf_datasheets['ctr'].mean():.2%}**")
+                st.write(f"• Average Position: **{page_perf_datasheets['position'].mean():.1f}**")
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.warning("No data sheets pages found in the current filter.")
+        
         # Time Series Analysis - ENHANCED WITH WEEKLY VIEW AND NEW METRICS
         st.markdown('<h2 class="section-header">Performance Over Time</h2>', unsafe_allow_html=True)
         
@@ -715,11 +931,11 @@ def main():
             fig_daily = make_subplots(
                 rows=3, cols=2,
                 subplot_titles=('Daily Clicks', 'Daily Impressions', 
-                              'Daily CTR', 'Daily Avg Position',
-                              'Unique Ranking Queries', 'Unique Ranking URLs'),
+                            'Daily CTR', 'Daily Avg Position',
+                            'Unique Ranking Queries', 'Unique Ranking URLs'),
                 specs=[[{"secondary_y": False}, {"secondary_y": False}],
-                      [{"secondary_y": False}, {"secondary_y": False}],
-                      [{"secondary_y": False}, {"secondary_y": False}]]
+                    [{"secondary_y": False}, {"secondary_y": False}],
+                    [{"secondary_y": False}, {"secondary_y": False}]]
             )
             
             fig_daily.add_trace(
@@ -850,7 +1066,7 @@ def main():
                     prev_week = weekly_perf.iloc[i-1]
                     curr_week = weekly_perf.iloc[i]
                     
-                    click_change = curr_week['clicks'] - prev_week['clicks']
+                    click_change = float(curr_week['clicks'] - prev_week['clicks'])
                     click_pct_change = (click_change / prev_week['clicks'] * 100) if prev_week['clicks'] > 0 else 0
                     
                     # Display every week's comparison (both drops and gains)
@@ -996,10 +1212,11 @@ def main():
             st.write("**Weekly Insights:**")
             st.write(f"• Average unique queries per week: **{weekly_perf['unique_queries'].mean():,.0f}**")
             st.write(f"• Average unique URLs per week: **{weekly_perf['unique_urls'].mean():,.0f}**")
+            st.markdown('</div>', unsafe_allow_html=True)
         
         # Export functionality
         st.markdown('<h2 class="section-header">Export Analysis</h2>', unsafe_allow_html=True)
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
             if st.button("Export Opportunity Data"):
@@ -1059,39 +1276,33 @@ def main():
                     file_name="page_performance_filtered.csv",
                     mime="text/csv"
                 )
-    
-    else:
-        # Landing page with instructions
-        st.markdown("""
-        ## Welcome to the GSC Analytics Dashboard
         
-        This dashboard helps you analyze your Google Search Console data to:
-        
-        - **Identify keyword opportunities** using advanced quadrant analysis
-        - **Separate branded vs non-branded queries** for focused analysis (Forti brand filtering)
-        - **Track trending queries** to spot winners and losers
-        - **Analyze geographic performance** across different countries
-        - **Find content gaps** with high potential
-        - **Evaluate page performance** with filtering options (excludes product-downloads)
-        - **Monitor trends** over time
-        
-        ### Key Features:
-        - **Branded Analysis**: Automatically separates queries containing "forti" for brand-specific insights
-        - **Enhanced Page Analysis**: Shows top 50 pages with option to filter out product-downloads URLs
-        - **Advanced Export**: Export branded, non-branded, and filtered page data separately
-        
-        ### To get started:
-        1. Upload your GSC CSV file using the sidebar
-        2. Apply filters to focus your analysis
-        3. Explore the insights and download recommendations
-        
-        ### Expected CSV Format:
-        ```
-        date, country, query, page, clicks, impressions, ctr, position
-        ```
-        
-        Your data should include the last 10 days with country-level breakdowns for comprehensive analysis.
-        """)
+        with col5:
+            if st.button("Export Spanish Markets"):
+                if 'spanish_results' in locals() and spanish_results[0] is not None:
+                    # Create comprehensive Spanish markets export
+                    spanish_export = pd.concat([
+                        spanish_top_queries.assign(type='Top Query'),
+                        spanish_top_pages.assign(type='Top Page'),
+                        spanish_by_country.assign(type='Country')
+                    ], ignore_index=True)
+                    csv = spanish_export.to_csv(index=False)
+                    st.download_button(
+                        label="Download CSV",
+                        data=csv,
+                        file_name="spanish_markets_analysis.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.warning("No Spanish markets data to export")
+
+    except FileNotFoundError:
+        st.error(f"Error: The data file was not found at the path: `{data_path}`")
+        st.info("Please make sure the data file exists in the specified directory and has the correct name.")
+        st.warning("The application expects the data file to be in a subfolder named 'Data' relative to the script.")
+    except Exception as e:
+        st.error(f"An error occurred while loading or processing the data: {e}")
+
 
 if __name__ == "__main__":
-    main()  
+    main()

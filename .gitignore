@@ -19,10 +19,16 @@ venv/
 .env
 *.json
 
-#files
+# Files to ignore
 test_script.py
 fortinet-gsc-api-*.json
 credentials.json
 testing.ipynb
 main1.py
+
+# Large data folders (keep local only)
+Data/
+Data/*
+*.csv
+gsc_data_day_by_day_3.csv
 
