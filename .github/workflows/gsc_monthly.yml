@@ -24,7 +24,8 @@ jobs:
 
       - name: Create Service Account JSON
         run: |
-          echo "${{ secrets.GSC_SERVICE_JSON }}" > service_account.json
+          echo "${{ secrets.GSC_SERVICE_JSON_B64 }}" | base64 -d > service_account.json
+
 
       - name: Run GSC Extraction
         run: |
