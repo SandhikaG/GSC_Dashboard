@@ -3,7 +3,7 @@ name: GSC Daily Fetch (Clean)
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 6 * * *'   # Daily 6 AM UTC
+    - cron: '0 6 * * *'
 
 jobs:
   fetch-gsc:
@@ -25,7 +25,15 @@ jobs:
 
       - name: Create service account key
         run: |
-          echo "${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}" | base64 --decode > service_account.json
+          echo "${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}" | base64 --decode > gsc_key.json
+
+      - name: Validate service account JSON
+        run: |
+          cat gsc_key.json | jq . > /dev/null
+
+      - name: Debug key file
+        run: |
+          ls -l gsc_key.json
 
       - name: Run GSC fetch
         env:
@@ -33,12 +41,8 @@ jobs:
           SITE_URL: ${{ secrets.SITE_URL }}
         run: |
           python main.py --mode daily
- 
+
       - name: Cleanup
         if: always()
         run: |
           rm -f gsc_key.json
-      - name: Validate service account JSON
-        run: |
-          cat service_account.json | jq . > /dev/null
-
