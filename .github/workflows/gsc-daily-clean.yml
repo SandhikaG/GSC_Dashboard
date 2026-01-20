@@ -1,58 +1,68 @@
-name: GSC Daily Fetch (Clean)
+name: GSC Daily Fetch (Phase 1 – CSV)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 6 * * *'
+    - cron: "0 6 * * *"   # Runs daily at 06:00 UTC
 
 jobs:
   fetch-gsc:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      # 1️⃣ Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2️⃣ Setup Python
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
+      # 3️⃣ Install dependencies
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # 4️⃣ Create GSC service account key
       - name: Create service account key
         run: |
           echo "${{ secrets.GSC_SERVICE_ACCOUNT_KEY_BASE64 }}" | base64 --decode > gsc_key.json
 
+      # 5️⃣ Validate service account JSON
       - name: Validate service account JSON
         run: |
           python - <<EOF
           import json
           json.load(open("gsc_key.json"))
-          print("✅ Valid JSON")
+          print("✅ Valid service account JSON")
           EOF
 
-      - name: Debug key file
+      # 6️⃣ Ensure Data directory exists
+      - name: Ensure Data directory
         run: |
-          ls -l gsc_key.json
+          mkdir -p Data
 
+      # 7️⃣ Run GSC fetch (DAILY MODE → updates CSV)
       - name: Run GSC fetch
         env:
           SERVICE_ACCOUNT_FILE: gsc_key.json
           SITE_URL: ${{ secrets.SITE_URL }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           python main.py --mode daily
-      - name: Debug Supabase env (safe)
+
+      # 8️⃣ Commit updated CSV back to GitHub
+      - name: Commit updated CSV
         run: |
-          echo "SUPABASE_URL is set: ${{ secrets.SUPABASE_URL != '' }}"
-          echo "SUPABASE_ANON_KEY is set: ${{ secrets.SUPABASE_ANON_KEY != '' }}"
+          git config --global user.name "github-actions"
+          git config --global user.email "actions@github.com"
+          git add Data/gsc_data_day_by_day.csv
+          git commit -m "Update GSC data (auto)" || echo "No changes to commit"
+          git push
 
-
+      # 9️⃣ Cleanup secrets
       - name: Cleanup
         if: always()
         run: |
