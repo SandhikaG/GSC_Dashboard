@@ -50,6 +50,9 @@ jobs:
         env:
           SERVICE_ACCOUNT_FILE: gsc_key.json
           SITE_URL: ${{ secrets.SITE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          USE_REST_API: "false"
         run: |
           python main.py --mode daily
 
