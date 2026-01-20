@@ -43,8 +43,15 @@ jobs:
         env:
           SERVICE_ACCOUNT_FILE: gsc_key.json
           SITE_URL: ${{ secrets.SITE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           python main.py --mode daily
+      - name: Debug Supabase env (safe)
+        run: |
+          echo "SUPABASE_URL is set: ${{ secrets.SUPABASE_URL != '' }}"
+          echo "SUPABASE_ANON_KEY is set: ${{ secrets.SUPABASE_ANON_KEY != '' }}"
+
 
       - name: Cleanup
         if: always()
