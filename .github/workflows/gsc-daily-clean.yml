@@ -25,11 +25,15 @@ jobs:
 
       - name: Create service account key
         run: |
-          echo "${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}" | base64 --decode > gsc_key.json
+          echo "${{ secrets.GSC_SERVICE_ACCOUNT_KEY_BASE64 }}" | base64 --decode > gsc_key.json
 
       - name: Validate service account JSON
         run: |
-          cat gsc_key.json | jq . > /dev/null
+          python - <<EOF
+          import json
+          json.load(open("gsc_key.json"))
+          print("✅ Valid JSON")
+          EOF
 
       - name: Debug key file
         run: |
