@@ -1,6 +1,6 @@
 name: GSC Data Fetcher
 
-on:
+on: []
   # Run daily at 6 AM UTC (adjust timezone as needed)
   schedule:
     - cron: '0 6 * * *'

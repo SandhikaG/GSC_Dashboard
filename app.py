@@ -337,6 +337,27 @@ def create_trending_analysis(df):
     
     return trend_df.head(20), trend_df.tail(20)
 
+def create_country_blog_category_analysis(df):
+    """
+    Country → Blog Category performance aggregation
+    """
+    agg_df = (
+        df.groupby(['country', 'blog_category'])
+          .agg(
+              clicks=('clicks', 'sum'),
+              impressions=('impressions', 'sum'),
+              avg_position=('position', 'mean')
+          )
+          .reset_index()
+    )
+
+    # Proper CTR calculation
+    agg_df['ctr'] = agg_df['clicks'] / agg_df['impressions']
+    agg_df = agg_df.sort_values(['country', 'clicks'], ascending=[True, False])
+
+    return agg_df
+
+
 def create_country_analysis(df):
     """Create country-wise performance analysis"""
     country_perf = df.groupby('country').agg({
@@ -471,7 +492,10 @@ def main():
         filtered_df = df.copy()
         if selected_country != 'All':
             filtered_df = filtered_df[filtered_df['country'] == selected_country]
-        
+
+        # 🔽 Country → Blog Category Aggregation
+        country_blog_df = create_country_blog_category_analysis(filtered_df)
+
         if len(date_range) == 2:
             filtered_df = filtered_df[
                 (filtered_df['date'].dt.date >= date_range[0]) &
@@ -626,6 +650,7 @@ def main():
                 use_container_width=True
             )
         
+        
         with st.expander("🌎 Spanish-Speaking Markets Analysis", expanded=False):
             st.markdown('<h2 class="section-header">Spanish Market Performance</h2>', unsafe_allow_html=True)
             with st.spinner("Analyzing Spanish-speaking markets..."):
@@ -746,7 +771,90 @@ def main():
                 
             else:
                 st.info("No data available for Spanish-speaking countries in the current filter.")
-        
+        # --------------------------------------------------
+        # Country → Blog Category Performance (INLINE DRILL-DOWN)
+        # --------------------------------------------------
+        st.markdown(
+            '<h2 class="section-header">Country → Blog Category Performance</h2>',
+            unsafe_allow_html=True
+        )
+
+        if len(country_blog_df) > 0:
+
+            selected_country_cb = st.selectbox(
+                "Select Country for Blog Category Analysis",
+                sorted(country_blog_df['country'].unique())
+            )
+
+            category_view = (
+                country_blog_df[country_blog_df['country'] == selected_country_cb]
+                .sort_values('clicks', ascending=False)
+                .reset_index(drop=True)
+            )
+
+            st.subheader(f"Blog Categories Performance — {selected_country_cb.upper()}")
+
+            # Loop each blog category and create expandable row
+            for _, row in category_view.iterrows():
+
+                with st.expander(
+                    f"📂 {row['blog_category']}  |  "
+                    f"Clicks: {row['clicks']:,}  |  "
+                    f"Impr: {row['impressions']:,}  |  "
+                    f"CTR: {row['ctr']:.2%}  |  "
+                    f"Pos: {row['avg_position']:.1f}",
+                    expanded=False
+                ):
+                    # Filter page-level data
+                    pages_df = filtered_df[
+                        (filtered_df['country'] == selected_country_cb) &
+                        (filtered_df['blog_category'] == row['blog_category'])
+                    ]
+
+                    if len(pages_df) == 0:
+                        st.info("No pages found for this blog category.")
+                    else:
+                        top_pages = (
+                            pages_df
+                            .groupby('page')
+                            .agg(
+                                clicks=('clicks', 'sum'),
+                                impressions=('impressions', 'sum'),
+                                avg_position=('position', 'mean')
+                            )
+                            .reset_index()
+                        )
+
+                        top_pages['ctr'] = (
+                            top_pages['clicks'] / top_pages['impressions']
+                        )
+
+                        top_pages = (
+                            top_pages
+                            .sort_values('clicks', ascending=False)
+                            .head(5)
+                            .reset_index(drop=True)
+                        )
+
+                        st.markdown("**Top 5 Pages**")
+
+                        st.dataframe(
+                            top_pages.rename(columns={
+                                'page': 'Page URL',
+                                'avg_position': 'Avg Position'
+                            }).style.format({
+                                'clicks': '{:,.0f}',
+                                'impressions': '{:,.0f}',
+                                'ctr': '{:.2%}',
+                                'Avg Position': '{:.1f}'
+                            }),
+                            use_container_width=True
+                        )
+
+        else:
+            st.info("No blog category data available.")
+
+
         # Trending Analysis
         st.markdown('<h2 class="section-header">Trending Queries Analysis</h2>', unsafe_allow_html=True)
         with st.spinner("Analyzing trends..."):
