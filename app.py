@@ -93,7 +93,7 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-@st.cache_data(ttl=3600,show_spinner=False))
+@st.cache_data(ttl=3600,show_spinner=False)
 def load_data_csv(file_mtime):
     path = "Data/gsc_last_30_days.csv"
 

@@ -39,6 +39,15 @@ df = pd.DataFrame(rows)
 df['date'] = pd.to_datetime(df['date'])
 
 os.makedirs("Data", exist_ok=True)
-df.to_csv("Data/gsc_last_30_days.csv", index=False)
+file_path = "Data/gsc_last_30_days.csv"
+df.to_csv(file_path, index=False)
 
 print(f"✅ Exported {len(df):,} rows")
+with open(file_path, "rb") as f:
+    supabase.storage.from_("gsc-exports").upload(
+        path="gsc_last_30_days.csv",
+        file=f,
+        file_options={"content-type": "text/csv", "upsert": "true"},
+    )
+
+print(f"✅ Uploaded {len(df):,} rows to Supabase Storage")
