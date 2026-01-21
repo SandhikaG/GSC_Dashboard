@@ -39,7 +39,8 @@ jobs:
           json.load(open("gsc_key.json"))
           print("✅ Valid service account JSON")
           EOF
-
+      - name: Ensure Data directory
+        run: mkdir -p Data
       # 6️⃣ Run GSC extraction → Supabase
       - name: Run GSC extractor (Supabase)
         env:

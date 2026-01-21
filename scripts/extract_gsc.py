@@ -338,6 +338,9 @@ class EnhancedGSCDataExtractor:
 
     def extract_data_day_by_day(self, start_date: str, end_date: str,
                                export_filename: str) -> pd.DataFrame:
+        export_dir = os.path.dirname(export_filename)
+        if export_dir:
+            os.makedirs(export_dir, exist_ok=True)
         target_dimensions = ['date', 'country', 'query', 'page']
 
         start_dt = datetime.strptime(start_date, '%Y-%m-%d')
