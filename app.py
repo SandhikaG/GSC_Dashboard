@@ -94,26 +94,61 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 @st.cache_data(ttl=3600)
+def load_data_csv():
+    path = "Data/gsc_last_30_days.csv"
+
+    if not os.path.exists(path):
+        return pd.DataFrame()
+
+    df = pd.read_csv(path, parse_dates=["date"])
+
+    # Safety casting
+    df['clicks'] = df['clicks'].astype(int)
+    df['impressions'] = df['impressions'].astype(int)
+    df['ctr'] = df['ctr'].astype(float)
+    df['position'] = df['position'].astype(float)
+
+    return df
+"""
+@st.cache_data(ttl=3600)
 def load_data_from_supabase():
     supabase: Client = create_client(
         os.environ["SUPABASE_URL"],
         os.environ["SUPABASE_ANON_KEY"]
     )
 
-    response = (
-        supabase
-        .table("gsc_metrics")
-        .select("*")
-        .order("date", desc=False)
-        .execute()
-    )
+    end_date =  datetime.utcnow().date() - timedelta(days=2) 
+    start_date = end_date - timedelta(days=29)
+    all_rows = []
+    page_size = 1000
+    offset = 0
+    while True:
+        response = (
+            supabase
+            .table("gsc_metrics")
+            .select("*")
+            .gte("date", start_date.isoformat())
+            .lte("date", end_date.isoformat())
+            .order("date", desc=False)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
 
-    if not response.data:
+        if not response.data:
+            break
+
+        all_rows.extend(response.data)
+
+        if len(response.data) < page_size:
+            break
+
+        offset += page_size
+
+    if not all_rows:
         return pd.DataFrame()
 
-    df = pd.DataFrame(response.data)
+    df = pd.DataFrame(all_rows)
 
-    # Type safety (VERY IMPORTANT)
     df['date'] = pd.to_datetime(df['date'])
     df['clicks'] = df['clicks'].astype(int)
     df['impressions'] = df['impressions'].astype(int)
@@ -121,7 +156,7 @@ def load_data_from_supabase():
     df['position'] = df['position'].astype(float)
 
     return df
-
+"""
 
 def is_branded_query(query, brand_terms=['forti']):
     """Check if a query contains branded terms"""
@@ -475,6 +510,7 @@ def create_page_performance_analysis(df):
     return page_perf.head(50), page_perf_filtered.head(50), page_perf_datasheets.head(50)
 
 def main():
+    st.cache_data.clear() 
     st.markdown('<h1 class="main-header">GSC Analytics Dashboard</h1>', unsafe_allow_html=True)
     
     # Define the path to the data file
@@ -483,7 +519,11 @@ def main():
     try:
         # Load data from the fixed path
         with st.spinner("Loading data..."):
-            df=load_data_from_supabase()
+            cache_key = datetime.utcnow().strftime("%Y-%m-%d-%H")  # hourly refresh
+            #df = load_data_from_supabase(cache_key)
+
+            df=load_data_csv()
+            st.write("DEBUG → Min date:", df['date'].min(), "Max date:", df['date'].max())
            # df = load_data(data_path)
         if df.empty:
             st.warning("No data available in Supabase yet.")
@@ -501,15 +541,22 @@ def main():
         # Country filter
         countries = ['All'] + sorted(df['country'].unique().tolist())
         selected_country = st.sidebar.selectbox("Select Country", countries)
-        
-        # Date range filter
+        max_date = df['date'].max().date()
+        min_date = df['date'].min().date()
+        # ✅ SAFE default range
+        if (max_date - min_date).days >= 29:
+            default_start = max_date - timedelta(days=29)
+        else:
+            default_start = min_date
+        st.session_state.pop("Select Date Range", None)
         date_range = st.sidebar.date_input(
             "Select Date Range",
-            value=(df['date'].min().date(), df['date'].max().date()),
-            min_value=df['date'].min().date(),
-            max_value=df['date'].max().date()
+            value=(max_date - timedelta(days=29), max_date),
+            min_value=min_date,
+            max_value=max_date
         )
-        
+    
+
         
         # Apply filters
         filtered_df = df.copy()
@@ -520,9 +567,9 @@ def main():
         country_blog_df = create_country_blog_category_analysis(filtered_df)
 
         if len(date_range) == 2:
-            filtered_df = filtered_df[
-                (filtered_df['date'].dt.date >= date_range[0]) &
-                (filtered_df['date'].dt.date <= date_range[1])
+            filtered_df =df[
+                (df['date'].dt.date >= date_range[0]) &
+                (df['date'].dt.date <= date_range[1])
             ]
         
         # Main dashboard content
