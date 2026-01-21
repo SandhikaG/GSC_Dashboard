@@ -3,7 +3,7 @@ name = "gsc-api-data"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "altair>=5.5.0",
     "fastapi>=0.116.1",
@@ -23,4 +23,5 @@ dependencies = [
     "sqlalchemy>=2",
     "streamlit>=1.49.1",
     "uvicorn>=0.35.0",
+    "supabase>=2.10.0"
 ]

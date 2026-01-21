@@ -10,7 +10,10 @@ import warnings
 warnings.filterwarnings('ignore')
 import os
 from supabase import create_client, Client
+from dotenv import load_dotenv
 
+
+load_dotenv()
 st.set_page_config(
     page_title="GSC Analytics Dashboard",
     page_icon="📊",
@@ -119,23 +122,7 @@ def load_data_from_supabase():
 
     return df
 
-"""
-@st.cache_data
-def load_data(filepath):
-    #Load and preprocess GSC data from a specified filepath
-    df = pd.read_csv(filepath)
-    try:
-        df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
-    except ValueError:
-        try:
-            df['date'] = pd.to_datetime(df['date'], format='%d-%m-%Y')
-        except ValueError:
-            df['date'] = pd.to_datetime(df['date'], infer_datetime_format=True)
-    
-    df['ctr'] = df['ctr'].astype(float)
-    df['position'] = df['position'].astype(float)
-    return df
-"""
+
 def is_branded_query(query, brand_terms=['forti']):
     """Check if a query contains branded terms"""
     query_lower = query.lower()
@@ -498,7 +485,10 @@ def main():
         with st.spinner("Loading data..."):
             df=load_data_from_supabase()
            # df = load_data(data_path)
-        
+        if df.empty:
+            st.warning("No data available in Supabase yet.")
+            st.stop()
+
         st.sidebar.header("Data Loaded")
         st.sidebar.success(f"Loaded {len(df):,} rows")
         
@@ -519,6 +509,7 @@ def main():
             min_value=df['date'].min().date(),
             max_value=df['date'].max().date()
         )
+        
         
         # Apply filters
         filtered_df = df.copy()

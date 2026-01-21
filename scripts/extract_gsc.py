@@ -429,13 +429,11 @@ def extract_gsc_data_enhanced(start_date: str, end_date: str,
     return data
 if __name__ == "__main__":
     # Calculate previous month date range
-    today = datetime.today()
-    first_day_this_month = today.replace(day=1)
-    last_day_last_month = first_day_this_month - timedelta(days=1)
-    first_day_last_month = last_day_last_month.replace(day=1)
+    end_date_dt = datetime.today() - timedelta(days=2)
+    start_date_dt = end_date_dt - timedelta(days=29)
 
-    start_date = first_day_last_month.strftime("%Y-%m-%d")
-    end_date = last_day_last_month.strftime("%Y-%m-%d")
+    start_date = start_date_dt.strftime("%Y-%m-%d")
+    end_date = end_date_dt.strftime("%Y-%m-%d")
 
     SERVICE_ACCOUNT_FILE = "gsc_key.json"  # GitHub workflow creates this file
     PROPERTY_URL = "https://www.fortinet.com"
