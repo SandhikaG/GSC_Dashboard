@@ -410,7 +410,7 @@ class EnhancedGSCDataExtractor:
             print(f"📋 Final dataset shape: {final_data.shape}")
             print(f"📋 Sample of final data:")
             print(final_data.head())
-            self.push_to_supabase(final_data)
+            #self.push_to_supabase(final_data)
             return final_data
         else:
             return pd.DataFrame()

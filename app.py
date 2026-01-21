@@ -93,15 +93,16 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-@st.cache_data(ttl=3600)
-def load_data_csv():
+@st.cache_data(ttl=3600,show_spinner=False))
+def load_data_csv(file_mtime):
     path = "Data/gsc_last_30_days.csv"
 
     if not os.path.exists(path):
         return pd.DataFrame()
 
-    df = pd.read_csv(path, parse_dates=["date"])
-
+    df = pd.read_csv(path)
+    df['date'] = pd.to_datetime(df['date'], errors="coerce")
+    df = df.dropna(subset=["date"])
     # Safety casting
     df['clicks'] = df['clicks'].astype(int)
     df['impressions'] = df['impressions'].astype(int)
@@ -521,8 +522,9 @@ def main():
         with st.spinner("Loading data..."):
             cache_key = datetime.utcnow().strftime("%Y-%m-%d-%H")  # hourly refresh
             #df = load_data_from_supabase(cache_key)
-
-            df=load_data_csv()
+            path = "Data/gsc_last_30_days.csv"
+            file_mtime = os.path.getmtime(path) if os.path.exists(path) else 0
+            df = load_data_csv(file_mtime)
             st.write("DEBUG → Min date:", df['date'].min(), "Max date:", df['date'].max())
            # df = load_data(data_path)
         if df.empty:
