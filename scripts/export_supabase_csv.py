@@ -43,11 +43,21 @@ file_path = "Data/gsc_last_30_days.csv"
 df.to_csv(file_path, index=False)
 
 print(f"✅ Exported {len(df):,} rows")
-with open(file_path, "rb") as f:
-    supabase.storage.from_("gsc-exports").upload(
-        path="gsc_last_30_days.csv",
-        file=f,
-        file_options={"content-type": "text/csv", "upsert": "true"},
-    )
+# Upload CSVs grouped by date (SAFE)
+for date_value, group in df.groupby(df["date"].dt.date):
+    file_name = f"gsc_{date_value}.csv"
+    file_path = f"Data/{file_name}"
 
-print(f"✅ Uploaded {len(df):,} rows to Supabase Storage")
+    group.to_csv(file_path, index=False)
+
+    with open(file_path, "rb") as f:
+        supabase.storage.from_("gsc-exports").upload(
+            path=file_name,
+            file=f,
+            file_options={
+                "content-type": "text/csv",
+                "upsert": "true"
+            },
+        )
+
+    print(f"✅ Uploaded {file_name} ({len(group):,} rows)")
