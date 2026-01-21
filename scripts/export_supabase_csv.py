@@ -5,7 +5,7 @@ from supabase import create_client
 
 supabase = create_client(
     os.environ["SUPABASE_URL"],
-    os.environ["SUPABASE_ANON_KEY"]
+    os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 )
 
 end_date = datetime.utcnow().date() - timedelta(days=2)

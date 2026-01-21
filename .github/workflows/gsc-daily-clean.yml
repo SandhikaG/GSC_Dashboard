@@ -50,6 +50,9 @@ jobs:
         run: |
           python scripts/extract_gsc.py
       - name: Export last 30 days CSV
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python scripts/export_supabase_csv.py
 
