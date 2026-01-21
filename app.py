@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 import altair as alt
 import warnings
 warnings.filterwarnings('ignore')
+import os
+from supabase import create_client, Client
 
 st.set_page_config(
     page_title="GSC Analytics Dashboard",
@@ -88,10 +90,39 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+@st.cache_data(ttl=3600)
+def load_data_from_supabase():
+    supabase: Client = create_client(
+        os.environ["SUPABASE_URL"],
+        os.environ["SUPABASE_ANON_KEY"]
+    )
 
+    response = (
+        supabase
+        .table("gsc_metrics")
+        .select("*")
+        .order("date", desc=False)
+        .execute()
+    )
+
+    if not response.data:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(response.data)
+
+    # Type safety (VERY IMPORTANT)
+    df['date'] = pd.to_datetime(df['date'])
+    df['clicks'] = df['clicks'].astype(int)
+    df['impressions'] = df['impressions'].astype(int)
+    df['ctr'] = df['ctr'].astype(float)
+    df['position'] = df['position'].astype(float)
+
+    return df
+
+"""
 @st.cache_data
 def load_data(filepath):
-    """Load and preprocess GSC data from a specified filepath"""
+    #Load and preprocess GSC data from a specified filepath
     df = pd.read_csv(filepath)
     try:
         df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
@@ -104,7 +135,7 @@ def load_data(filepath):
     df['ctr'] = df['ctr'].astype(float)
     df['position'] = df['position'].astype(float)
     return df
-
+"""
 def is_branded_query(query, brand_terms=['forti']):
     """Check if a query contains branded terms"""
     query_lower = query.lower()
@@ -460,12 +491,13 @@ def main():
     st.markdown('<h1 class="main-header">GSC Analytics Dashboard</h1>', unsafe_allow_html=True)
     
     # Define the path to the data file
-    data_path = "Data/gsc_data_day_by_day.csv"
+    #data_path = "Data/gsc_data_day_by_day.csv"
 
     try:
         # Load data from the fixed path
         with st.spinner("Loading data..."):
-            df = load_data(data_path)
+            df=load_data_from_supabase()
+           # df = load_data(data_path)
         
         st.sidebar.header("Data Loaded")
         st.sidebar.success(f"Loaded {len(df):,} rows")
@@ -1414,14 +1446,19 @@ def main():
                     )
                 else:
                     st.warning("No Spanish markets data to export")
-
+    except KeyError as e:
+        st.error("Missing environment variable for Supabase.")
+        st.code(str(e))
+        st.info("Ensure SUPABASE_URL and SUPABASE_ANON_KEY are set.")
+    
+    except Exception as e:
+        st.error(f"An error occurred while loading or processing the data: {e}")
+    """ 
     except FileNotFoundError:
         st.error(f"Error: The data file was not found at the path: `{data_path}`")
         st.info("Please make sure the data file exists in the specified directory and has the correct name.")
         st.warning("The application expects the data file to be in a subfolder named 'Data' relative to the script.")
-    except Exception as e:
-        st.error(f"An error occurred while loading or processing the data: {e}")
-
+    """
 
 if __name__ == "__main__":
     main()

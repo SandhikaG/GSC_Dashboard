@@ -18,5 +18,5 @@ pandas
 plotly
 numpy
 altair
-
+supabase
 

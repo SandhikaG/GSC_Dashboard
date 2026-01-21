@@ -6,6 +6,7 @@ import time
 import logging
 from typing import List, Dict, Optional
 import os
+from supabase import create_client, Client
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -18,7 +19,46 @@ class EnhancedGSCDataExtractor:
         self.scopes = ["https://www.googleapis.com/auth/webmasters.readonly"]
         self.service = self._initialize_service()
         self.row_limit_per_request = 25000
+    def _init_supabase(self) -> Client:
+        url = os.environ.get("SUPABASE_URL")
+        key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        return create_client(url, key)
+    def push_to_supabase(self, df: pd.DataFrame, table: str = "gsc_metrics"):
+        if df.empty:
+            logger.warning("No data to push to Supabase")
+            return
 
+        supabase = self._init_supabase()
+
+        # Convert dataframe to records
+        records = df.to_dict(orient="records")
+
+        batch_size = 1000
+        for i in range(0, len(records), batch_size):
+            batch = records[i:i + batch_size]
+            response = supabase.table(table).upsert(batch).execute()
+
+            if response.data is None:
+                logger.error(f"Supabase insert failed at batch {i}")
+            else:
+                logger.info(f"Inserted batch {i} → {i + len(batch)}")
+
+    def _extract_blog_category(self, url: str) -> str:
+      """
+      Extract blog category from page URL
+      Example:
+      /blog/security/what-is-x → security
+      """
+      try:
+          parts = url.split("/")
+          if "blog" in parts:
+              blog_index = parts.index("blog")
+              if blog_index + 1 < len(parts):
+                  return parts[blog_index + 1]
+      except Exception:
+          pass
+
+      return "other"
     def _initialize_service(self):
         """Initialize the Google Search Console service"""
         creds = service_account.Credentials.from_service_account_file(
@@ -108,11 +148,11 @@ class EnhancedGSCDataExtractor:
         # If still no data, try query segmentation (for very high volume days)
         logger.info(f"Trying query segmentation for {date}")
         data = self._get_data_by_query_segments(date, date, dimensions)
-
+        
         if data is not None and len(data) > 0:
             logger.info(f"Query segmentation for {date}: {len(data)} rows")
             return data
-
+       
         logger.warning(f"No data extracted for {date}")
         return None
 
@@ -275,7 +315,7 @@ class EnhancedGSCDataExtractor:
 
     def _ensure_column_order(self, df: pd.DataFrame) -> pd.DataFrame:
         """Ensure the DataFrame has the correct column order and all required columns"""
-        required_columns = ['date', 'country', 'query', 'page', 'clicks', 'impressions', 'ctr', 'position']
+        required_columns = ['date', 'country', 'query', 'page', 'blog_category','clicks', 'impressions', 'ctr', 'position']
 
         for col in required_columns:
             if col not in df.columns:
@@ -323,6 +363,9 @@ class EnhancedGSCDataExtractor:
             daily_data = self.get_single_day_data(date, target_dimensions)
 
             if daily_data is not None and not daily_data.empty:
+                daily_data["blog_category"] = daily_data["page"].apply(
+                    self._extract_blog_category
+                )
                 daily_data = self._ensure_column_order(daily_data)
 
                 if not os.path.exists(export_filename):
@@ -364,6 +407,7 @@ class EnhancedGSCDataExtractor:
             print(f"📋 Final dataset shape: {final_data.shape}")
             print(f"📋 Sample of final data:")
             print(final_data.head())
+            self.push_to_supabase(final_data)
             return final_data
         else:
             return pd.DataFrame()
@@ -390,7 +434,7 @@ if __name__ == "__main__":
     start_date = first_day_last_month.strftime("%Y-%m-%d")
     end_date = last_day_last_month.strftime("%Y-%m-%d")
 
-    SERVICE_ACCOUNT_FILE = "service_account.json"  # GitHub workflow creates this file
+    SERVICE_ACCOUNT_FILE = "gsc_key.json"  # GitHub workflow creates this file
     PROPERTY_URL = "https://www.fortinet.com"
 
     data = extract_gsc_data_enhanced(
@@ -398,7 +442,7 @@ if __name__ == "__main__":
         end_date=end_date,
         service_account_file=SERVICE_ACCOUNT_FILE,
         property_url=PROPERTY_URL,
-        export_filename='gsc_data_day_by_day.csv'
+        export_filename='Data/gsc_data_day_by_day.csv'
     )
 
     print(f"\n✅ Extracted data for {start_date} to {end_date}")

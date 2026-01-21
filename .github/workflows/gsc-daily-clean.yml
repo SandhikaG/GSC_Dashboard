@@ -1,9 +1,9 @@
-name: GSC Daily Fetch (Phase 1 – CSV)
+name: GSC Daily Fetch (Phase 1 – Supabase)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 6 * * *"   # Runs daily at 06:00 UTC
+    - cron: "0 6 * * *"   # Daily at 06:00 UTC (testing)
 
 jobs:
   fetch-gsc:
@@ -40,32 +40,16 @@ jobs:
           print("✅ Valid service account JSON")
           EOF
 
-      # 6️⃣ Ensure Data directory exists
-      - name: Ensure Data directory
-        run: |
-          mkdir -p Data
-
-      # 7️⃣ Run GSC fetch (DAILY MODE → updates CSV)
-      - name: Run GSC fetch
+      # 6️⃣ Run GSC extraction → Supabase
+      - name: Run GSC extractor (Supabase)
         env:
-          SERVICE_ACCOUNT_FILE: gsc_key.json
-          SITE_URL: ${{ secrets.SITE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          USE_REST_API: "false"
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SITE_URL: ${{ secrets.SITE_URL }}
         run: |
-          python main.py --mode daily
+          python scripts/extract_gsc.py
 
-      # 8️⃣ Commit updated CSV back to GitHub
-      - name: Commit updated CSV
-        run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "actions@github.com"
-          git add Data/gsc_data_day_by_day.csv
-          git commit -m "Update GSC data (auto)" || echo "No changes to commit"
-          git push
-
-      # 9️⃣ Cleanup secrets
+      # 7️⃣ Cleanup secrets
       - name: Cleanup
         if: always()
         run: |
