@@ -13,7 +13,7 @@ start_date = end_date - timedelta(days=29)
 
 rows = []
 offset = 0
-page_size = 1000
+page_size = 500
 
 while True:
     resp = (
@@ -22,7 +22,6 @@ while True:
         .select("*")
         .gte("date", start_date.isoformat())
         .lte("date", end_date.isoformat())
-        .order("date")
         .range(offset, offset + page_size - 1)
         .execute()
     )
