@@ -27,7 +27,7 @@ class EnhancedGSCDataExtractor:
         if df.empty:
             logger.warning("No data to push to Supabase")
             return
-
+        df = df.drop_duplicates(subset=["date", "page", "query"])
         supabase = self._init_supabase()
 
         # Convert dataframe to records
