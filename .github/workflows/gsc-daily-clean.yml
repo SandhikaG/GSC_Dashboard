@@ -3,7 +3,7 @@ name: GSC Daily Fetch (Phase 1 – Supabase)
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 6 * * *"   # Daily at 06:00 UTC (testing)
+    - cron: "0 6 3 * *"   # Monthly on the 3rd at 06:00 UTC
 
 jobs:
   fetch-gsc:
