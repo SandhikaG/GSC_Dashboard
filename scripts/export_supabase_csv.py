@@ -2,6 +2,8 @@ import os
 import pandas as pd
 from datetime import datetime, timedelta
 from supabase import create_client
+from datetime import date
+
 
 supabase = create_client(
     os.environ["SUPABASE_URL"],
@@ -10,7 +12,7 @@ supabase = create_client(
 
 end_date = datetime.utcnow().date() - timedelta(days=2)
 start_date = end_date - timedelta(days=29)
-
+all_dates = pd.date_range(start_date, end_date)
 rows = []
 offset = 0
 page_size = 500
@@ -44,7 +46,13 @@ df.to_csv(file_path, index=False)
 
 print(f"✅ Exported {len(df):,} rows")
 # Upload CSVs grouped by date (SAFE)
-for date_value, group in df.groupby(df["date"].dt.date):
+for d in all_dates:
+    date_value = d.date()
+    group = df[df["date"].dt.date == date_value]
+
+    if group.empty:
+        print(f"⚠️ No rows for {date_value}, uploading empty CSV")
+    
     file_name = f"gsc_{date_value}.csv"
     file_path = f"Data/{file_name}"
 
