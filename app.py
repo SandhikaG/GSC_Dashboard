@@ -1506,12 +1506,7 @@ def main():
     
     except Exception as e:
         st.error(f"An error occurred while loading or processing the data: {e}")
-    """ 
-    except FileNotFoundError:
-        st.error(f"Error: The data file was not found at the path: `{data_path}`")
-        st.info("Please make sure the data file exists in the specified directory and has the correct name.")
-        st.warning("The application expects the data file to be in a subfolder named 'Data' relative to the script.")
-    """
+    
 
 if __name__ == "__main__":
     main()
