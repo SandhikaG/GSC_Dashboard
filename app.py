@@ -560,6 +560,14 @@ def main():
             #file_mtime = os.path.getmtime(path) if os.path.exists(path) else 0
             #df = load_data_csv(file_mtime)
             df = load_data_from_storage(days=30)
+            storage_min_date, storage_max_date = get_storage_date_bounds()
+
+            data_min_date = df['date'].min().date()
+            data_max_date = df['date'].max().date()
+
+            # Fallback safety
+            min_date = storage_min_date or data_min_date
+            max_date = storage_max_date or data_max_date
             if df.empty:
                 st.error("No data loaded from Supabase Storage.")
                 st.stop()
@@ -573,7 +581,10 @@ def main():
         st.sidebar.success(f"Loaded {len(df):,} rows")
         
         # Date range info
-        st.sidebar.info(f"Date Range: {df['date'].min().strftime('%Y-%m-%d')} to {df['date'].max().strftime('%Y-%m-%d')}")
+        st.sidebar.info(
+    f"Date Range: {min_date.strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')}"
+)
+
         
         # Sidebar filters
         st.sidebar.header("Filters")
@@ -581,14 +592,7 @@ def main():
         # Country filter
         countries = ['All'] + sorted(df['country'].unique().tolist())
         selected_country = st.sidebar.selectbox("Select Country", countries)
-        storage_min_date, storage_max_date = get_storage_date_bounds()
-
-        data_min_date = df['date'].min().date()
-        data_max_date = df['date'].max().date()
-
-        # Fallback safety
-        min_date = storage_min_date or data_min_date
-        max_date = storage_max_date or data_max_date
+        
         default_start = max(min_date, max_date - timedelta(days=29))
      
         date_range = st.sidebar.date_input(
@@ -608,9 +612,9 @@ def main():
         country_blog_df = create_country_blog_category_analysis(filtered_df)
 
         if len(date_range) == 2:
-            filtered_df =df[
-                (df['date'].dt.date >= date_range[0]) &
-                (df['date'].dt.date <= date_range[1])
+            filtered_df =filtered_df[
+                (filtered_df['date'].dt.date >= date_range[0]) &
+                (filtered_df['date'].dt.date <= date_range[1])
             ]
         
         # Main dashboard content
