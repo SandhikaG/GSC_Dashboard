@@ -12,11 +12,11 @@ python-dotenv==1.0.0
 # Utilities
 requests==2.31.0
 
-# For Streamlit Dashboard (app.py)
+# Streamlit Dashboard
 streamlit
 pandas
-plotly
 numpy
+plotly
 altair
 supabase
-
+httpx
