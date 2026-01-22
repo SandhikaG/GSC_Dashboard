@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
-
+from io import BytesIO
 
 load_dotenv()
 st.set_page_config(
@@ -110,54 +110,63 @@ def load_data_csv(file_mtime):
     df['position'] = df['position'].astype(float)
 
     return df
-"""
-@st.cache_data(ttl=3600)
-def load_data_from_supabase():
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_data_from_storage(days=30):
     supabase: Client = create_client(
         os.environ["SUPABASE_URL"],
-        os.environ["SUPABASE_ANON_KEY"]
+        os.environ["SUPABASE_SERVICE_ROLE_KEY"]
     )
 
-    end_date =  datetime.utcnow().date() - timedelta(days=2) 
-    start_date = end_date - timedelta(days=29)
-    all_rows = []
-    page_size = 1000
-    offset = 0
-    while True:
-        response = (
-            supabase
-            .table("gsc_metrics")
-            .select("*")
-            .gte("date", start_date.isoformat())
-            .lte("date", end_date.isoformat())
-            .order("date", desc=False)
-            .range(offset, offset + page_size - 1)
-            .execute()
-        )
+    # 🔹 List files in bucket
+    files = supabase.storage.from_("gsc-exports").list(path="")
+    
 
-        if not response.data:
-            break
-
-        all_rows.extend(response.data)
-
-        if len(response.data) < page_size:
-            break
-
-        offset += page_size
-
-    if not all_rows:
+    if not files:
         return pd.DataFrame()
 
-    df = pd.DataFrame(all_rows)
+    # 🔹 Extract dates from filenames
+    available_dates = []
+    for f in files:
+        name = f.get("name", "")
+        if name.startswith("gsc_") and name.endswith(".csv"):
+            try:
+                date_part = name.replace("gsc_", "").replace(".csv", "")
+                available_dates.append(date_part)
+            except Exception:
+                pass
 
-    df['date'] = pd.to_datetime(df['date'])
+    if not available_dates:
+        return pd.DataFrame()
+
+    # 🔹 Sort and take latest N days
+    available_dates = sorted(available_dates, reverse=True)[:days]
+
+    dfs = []
+    for d in available_dates:
+        file_name = f"gsc_{d}.csv"
+        try:
+            res = supabase.storage.from_("gsc-exports").download(file_name)
+            df = pd.read_csv(BytesIO(res))
+            dfs.append(df)
+        except Exception:
+            continue
+
+    if not dfs:
+        return pd.DataFrame()
+
+    df = pd.concat(dfs, ignore_index=True)
+
+    # Safety casting
+    df['date'] = pd.to_datetime(df['date'], errors="coerce")
+    df = df.dropna(subset=["date"])
     df['clicks'] = df['clicks'].astype(int)
     df['impressions'] = df['impressions'].astype(int)
     df['ctr'] = df['ctr'].astype(float)
     df['position'] = df['position'].astype(float)
 
     return df
-"""
+
+
 
 def is_branded_query(query, brand_terms=['forti']):
     """Check if a query contains branded terms"""
@@ -522,10 +531,14 @@ def main():
         with st.spinner("Loading data..."):
             cache_key = datetime.utcnow().strftime("%Y-%m-%d-%H")  # hourly refresh
             #df = load_data_from_supabase(cache_key)
-            path = "Data/gsc_last_30_days.csv"
-            file_mtime = os.path.getmtime(path) if os.path.exists(path) else 0
-            df = load_data_csv(file_mtime)
-            st.write("DEBUG → Min date:", df['date'].min(), "Max date:", df['date'].max())
+            #path = "Data/gsc_last_30_days.csv"
+            #file_mtime = os.path.getmtime(path) if os.path.exists(path) else 0
+            #df = load_data_csv(file_mtime)
+            df = load_data_from_storage(days=30)
+            if df.empty:
+                st.error("No data loaded from Supabase Storage.")
+                st.stop()
+           # st.write("DEBUG → Min date:", df['date'].min(), "Max date:", df['date'].max())
            # df = load_data(data_path)
         if df.empty:
             st.warning("No data available in Supabase yet.")
