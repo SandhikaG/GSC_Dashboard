@@ -166,6 +166,31 @@ def load_data_from_storage(days=30):
 
     return df
 
+def get_storage_date_bounds():
+    supabase = create_client(
+        os.environ["SUPABASE_URL"],
+        os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    )
+
+    files = supabase.storage.from_("gsc-exports").list()
+
+    dates = []
+    for f in files:
+        name = f.get("name", "")
+        if name.startswith("gsc_") and name.endswith(".csv"):
+            try:
+                d = datetime.strptime(
+                    name.replace("gsc_", "").replace(".csv", ""),
+                    "%Y-%m-%d"
+                ).date()
+                dates.append(d)
+            except Exception:
+                pass
+
+    if not dates:
+        return None, None
+
+    return min(dates), max(dates)
 
 
 def is_branded_query(query, brand_terms=['forti']):
@@ -556,21 +581,22 @@ def main():
         # Country filter
         countries = ['All'] + sorted(df['country'].unique().tolist())
         selected_country = st.sidebar.selectbox("Select Country", countries)
-        max_date = df['date'].max().date()
-        min_date = df['date'].min().date()
-        # ✅ SAFE default range
-        if (max_date - min_date).days >= 29:
-            default_start = max_date - timedelta(days=29)
-        else:
-            default_start = min_date
-        st.session_state.pop("Select Date Range", None)
+        storage_min_date, storage_max_date = get_storage_date_bounds()
+
+        data_min_date = df['date'].min().date()
+        data_max_date = df['date'].max().date()
+
+        # Fallback safety
+        min_date = storage_min_date or data_min_date
+        max_date = storage_max_date or data_max_date
+        default_start = max(min_date, max_date - timedelta(days=29))
+     
         date_range = st.sidebar.date_input(
             "Select Date Range",
-            value=(max_date - timedelta(days=29), max_date),
+            value=(default_start, max_date),
             min_value=min_date,
             max_value=max_date
         )
-    
 
         
         # Apply filters
