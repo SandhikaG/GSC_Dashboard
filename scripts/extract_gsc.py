@@ -410,7 +410,7 @@ class EnhancedGSCDataExtractor:
             print(f"📋 Final dataset shape: {final_data.shape}")
             print(f"📋 Sample of final data:")
             print(final_data.head())
-            #self.push_to_supabase(final_data)
+            self.push_to_supabase(final_data)
             return final_data
         else:
             return pd.DataFrame()
@@ -429,7 +429,10 @@ def extract_gsc_data_enhanced(start_date: str, end_date: str,
     return data
 if __name__ == "__main__":
     # Calculate previous month date range
-    end_date_dt = datetime.today() - timedelta(days=2)
+    SAFE_LAG_DAYS = 3
+
+    end_date_dt = datetime.utcnow().date() - timedelta(days=SAFE_LAG_DAYS)
+   
     start_date_dt = end_date_dt - timedelta(days=29)
 
     start_date = start_date_dt.strftime("%Y-%m-%d")

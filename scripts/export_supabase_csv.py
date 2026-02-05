@@ -9,8 +9,10 @@ supabase = create_client(
     os.environ["SUPABASE_URL"],
     os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 )
+SAFE_LAG_DAYS = 3
 
-end_date = datetime.utcnow().date() - timedelta(days=2)
+end_date = datetime.utcnow().date() - timedelta(days=SAFE_LAG_DAYS)
+
 start_date = end_date - timedelta(days=29)
 all_dates = pd.date_range(start_date, end_date)
 rows = []
@@ -52,6 +54,7 @@ for d in all_dates:
 
     if group.empty:
         print(f"⚠️ No rows for {date_value}, uploading empty CSV")
+        continue
     
     file_name = f"gsc_{date_value}.csv"
     file_path = f"Data/{file_name}"

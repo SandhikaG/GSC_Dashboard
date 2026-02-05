@@ -20,6 +20,20 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+FORTINET_BLOG_SITES = {
+    "USA (English)": "/blog",
+    "UK & Ireland (English)": "/uk/blog",
+    "Germany (Deutsch)": "/de/blog",
+    "France (Français)": "/fr/blog",
+    "Italy (Italiano)": "/it/blog",
+    "Japan (日本語)": "/jp/blog",
+    "Korea (한국어)": "/kr/blog",
+    "Brazil (Português)": "/br/blog",
+    "Latin America (Español)": "/es/blog",
+    "Taiwan (繁體中文)": "/tw/blog",
+    "Mainland China": "/cn/blog"
+}
+
 
 st.markdown("""
 <style>
@@ -926,9 +940,11 @@ def main():
 
             top_pages = (
                 top_pages
-                .sort_values('clicks', ascending=False)  
+                .sort_values('clicks', ascending=False)
+                .head(10) 
                 .reset_index(drop=True)
             )
+            top_pages.index = top_pages.index + 1
 
             st.subheader(f"Top Pages — {selected_country.upper()}")
 
@@ -943,7 +959,65 @@ def main():
                     'Avg Position': '{:.1f}'
                 }),
                 use_container_width=True,
-                height=600
+             
+            )
+
+         # --------------------------------------------------
+                # --------------------------------------------------
+        # Blog-site-wise Traffic Performance (Official Blogs)
+        # --------------------------------------------------
+        st.markdown(
+            '<h2 class="section-header">Blog-site-wise Traffic Performance</h2>',
+            unsafe_allow_html=True
+        )
+
+        blog_rows = []
+
+        for blog_name, blog_path in FORTINET_BLOG_SITES.items():
+
+            blog_site_df = filtered_df[
+                filtered_df['page'].str.contains(blog_path, na=False)
+            ]
+
+            if len(blog_site_df) == 0:
+                continue
+
+            clicks = blog_site_df['clicks'].sum()
+            impressions = blog_site_df['impressions'].sum()
+            avg_position = blog_site_df['position'].mean()
+            ctr = clicks / impressions if impressions > 0 else 0
+
+            blog_rows.append({
+                "Blog Site": blog_name,
+                "Blog URL": f"https://www.fortinet.com{blog_path}",
+                "clicks": clicks,
+                "impressions": impressions,
+                "avg_position": avg_position,
+                "ctr": ctr
+            })
+
+        blog_sites_df = pd.DataFrame(blog_rows)
+
+        if len(blog_sites_df) == 0:
+            st.info("No blog traffic found for defined blog sites.")
+        else:
+            blog_sites_df = (
+                blog_sites_df
+                .sort_values("clicks", ascending=False)
+                .reset_index(drop=True)
+            )
+
+            blog_sites_df.index = blog_sites_df.index + 1
+            blog_sites_df.index.name = "Rank"
+
+            st.dataframe(
+                blog_sites_df.style.format({
+                    "clicks": "{:,.0f}",
+                    "impressions": "{:,.0f}",
+                    "ctr": "{:.2%}",
+                    "avg_position": "{:.1f}"
+                }),
+                use_container_width=True
             )
 
 
