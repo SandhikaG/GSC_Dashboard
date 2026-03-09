@@ -27,21 +27,41 @@ class EnhancedGSCDataExtractor:
         if df.empty:
             logger.warning("No data to push to Supabase")
             return
-        df = df.drop_duplicates(subset=["date", "page", "query"])
-        supabase = self._init_supabase()
 
-        # Convert dataframe to records
+        df = df.drop_duplicates(subset=["date", "page", "query"])
         records = df.to_dict(orient="records")
 
         batch_size = 1000
+        max_retries = 5
+
+        supabase = self._init_supabase()
+
         for i in range(0, len(records), batch_size):
             batch = records[i:i + batch_size]
-            response = supabase.table(table).upsert(batch).execute()
 
-            if response.data is None:
-                logger.error(f"Supabase insert failed at batch {i}")
-            else:
-                logger.info(f"Inserted batch {i} → {i + len(batch)}")
+            for attempt in range(max_retries):
+                try:
+                    response = supabase.table(table).upsert(batch).execute()
+
+                    if response.data is None:
+                        raise Exception("Empty response from Supabase")
+
+                    logger.info(f"Inserted batch {i} → {i + len(batch)}")
+                    break
+
+                except Exception as e:
+                    logger.warning(
+                        f"Batch {i} failed (attempt {attempt+1}/{max_retries}): {e}"
+                    )
+
+                    # recreate client in case connection died
+                    supabase = self._init_supabase()
+
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(5)
+                    else:
+                        logger.error(f"Batch {i} permanently failed")
 
     def _extract_blog_category(self, url: str) -> str:
       """
