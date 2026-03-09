@@ -23,45 +23,39 @@ class EnhancedGSCDataExtractor:
         url = os.environ.get("SUPABASE_URL")
         key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
         return create_client(url, key)
+    import time
+
     def push_to_supabase(self, df: pd.DataFrame, table: str = "gsc_metrics"):
         if df.empty:
             logger.warning("No data to push to Supabase")
             return
 
         df = df.drop_duplicates(subset=["date", "page", "query"])
+        supabase = self._init_supabase()
+
         records = df.to_dict(orient="records")
 
         batch_size = 1000
-        max_retries = 5
-
-        supabase = self._init_supabase()
 
         for i in range(0, len(records), batch_size):
             batch = records[i:i + batch_size]
 
-            for attempt in range(max_retries):
-                try:
-                    response = supabase.table(table).upsert(batch).execute()
+            try:
+                response = supabase.table(table).upsert(batch).execute()
 
-                    if response.data is None:
-                        raise Exception("Empty response from Supabase")
-
+                if response.data is None:
+                    logger.error(f"Supabase insert failed at batch {i}")
+                else:
                     logger.info(f"Inserted batch {i} → {i + len(batch)}")
-                    break
 
-                except Exception as e:
-                    logger.warning(
-                        f"Batch {i} failed (attempt {attempt+1}/{max_retries}): {e}"
-                    )
+            except Exception as e:
+                logger.error(f"Batch {i} failed: {e}")
+                time.sleep(10)   # wait and retry once
+                supabase = self._init_supabase()
+                response = supabase.table(table).upsert(batch).execute()
 
-                    # recreate client in case connection died
-                    supabase = self._init_supabase()
-
-                    if attempt < max_retries - 1:
-                        import time
-                        time.sleep(5)
-                    else:
-                        logger.error(f"Batch {i} permanently failed")
+            # IMPORTANT: slow down requests
+            time.sleep(0.4)
 
     def _extract_blog_category(self, url: str) -> str:
       """
